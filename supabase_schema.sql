@@ -151,12 +151,51 @@ CREATE POLICY "Users can only delete their own categories"
     USING (auth.uid() = user_id);
 
 -- --------------------------------------------------------------------
--- 5. PERFORMANCE OPTIMIZATION INDICES
+-- 5. RECURRING BILLING TEMPLATES TABLE
+-- --------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.recurring_templates (
+    id TEXT PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    type TEXT NOT NULL CHECK (type IN ('income', 'expense')),
+    amount NUMERIC NOT NULL CHECK (amount >= 0),
+    category TEXT NOT NULL,
+    account TEXT NOT NULL,
+    note TEXT,
+    day_of_month INTEGER NOT NULL CHECK (day_of_month BETWEEN 1 AND 31),
+    is_active INTEGER NOT NULL CHECK (is_active IN (0, 1)) DEFAULT 1,
+    last_applied_month TEXT, -- FORMAT: 'YYYY-MM'
+    updated_at BIGINT NOT NULL -- Unix timestamp in milliseconds
+);
+
+-- Enable Row Level Security (RLS) for Recurring Templates
+ALTER TABLE public.recurring_templates ENABLE ROW LEVEL SECURITY;
+
+-- Create Policies for Recurring Templates (isolate data per user)
+CREATE POLICY "Users can only read their own recurring templates" 
+    ON public.recurring_templates FOR SELECT 
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can only insert their own recurring templates" 
+    ON public.recurring_templates FOR INSERT 
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can only update their own recurring templates" 
+    ON public.recurring_templates FOR UPDATE 
+    USING (auth.uid() = user_id) 
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can only delete their own recurring templates" 
+    ON public.recurring_templates FOR DELETE 
+    USING (auth.uid() = user_id);
+
+-- --------------------------------------------------------------------
+-- 6. PERFORMANCE OPTIMIZATION INDICES
 -- --------------------------------------------------------------------
 CREATE INDEX IF NOT EXISTS idx_transactions_user_date ON public.transactions(user_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_debts_user ON public.debts_lending(user_id);
 CREATE INDEX IF NOT EXISTS idx_loans_user ON public.loans_installments(user_id);
 CREATE INDEX IF NOT EXISTS idx_categories_user ON public.custom_categories(user_id);
+CREATE INDEX IF NOT EXISTS idx_recurring_user ON public.recurring_templates(user_id);
 
 -- ====================================================================
 -- MIGRATION SCRIPT END

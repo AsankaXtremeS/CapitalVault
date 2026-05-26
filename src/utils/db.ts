@@ -25,14 +25,17 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
 
 /**
  * Initializes the database schemas and runs migrations/setup.
+ * Each statement is executed individually to prevent parse failures.
  */
 export async function initializeDatabase(): Promise<void> {
   const db = await getDatabase();
 
-  // Create tables in a transactional execution
-  await db.execAsync(`
-    PRAGMA foreign_keys = ON;
+  // Enable WAL mode for better concurrent read/write performance
+  await db.execAsync('PRAGMA journal_mode = WAL;');
+  await db.execAsync('PRAGMA foreign_keys = ON;');
 
+  // Transactions table
+  await db.execAsync(`
     CREATE TABLE IF NOT EXISTS transactions (
       id TEXT PRIMARY KEY,
       type TEXT CHECK(type IN ('income', 'expense', 'transfer')) NOT NULL,
@@ -46,7 +49,10 @@ export async function initializeDatabase(): Promise<void> {
       sync_status TEXT CHECK(sync_status IN ('synced', 'pending', 'deleted')) DEFAULT 'pending',
       updated_at INTEGER NOT NULL
     );
+  `);
 
+  // Debts table
+  await db.execAsync(`
     CREATE TABLE IF NOT EXISTS debts_lending (
       id TEXT PRIMARY KEY,
       type TEXT CHECK(type IN ('lending', 'borrowing')) NOT NULL,
@@ -59,7 +65,10 @@ export async function initializeDatabase(): Promise<void> {
       sync_status TEXT CHECK(sync_status IN ('synced', 'pending', 'deleted')) DEFAULT 'pending',
       updated_at INTEGER NOT NULL
     );
+  `);
 
+  // Loans / installments table
+  await db.execAsync(`
     CREATE TABLE IF NOT EXISTS loans_installments (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -74,4 +83,20 @@ export async function initializeDatabase(): Promise<void> {
     );
   `);
 
+  // Recurring billing templates table
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS recurring_templates (
+      id TEXT PRIMARY KEY,
+      type TEXT CHECK(type IN ('income', 'expense')) NOT NULL,
+      amount REAL NOT NULL,
+      category TEXT NOT NULL,
+      account TEXT NOT NULL,
+      note TEXT,
+      day_of_month INTEGER NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      last_applied_month TEXT,
+      sync_status TEXT CHECK(sync_status IN ('synced', 'pending', 'deleted')) DEFAULT 'pending',
+      updated_at INTEGER NOT NULL
+    );
+  `);
 }

@@ -20,8 +20,12 @@ export default function RootLayout() {
 
   React.useEffect(() => {
     async function setupApp() {
-      // 1. Initialize SQLite Database schemas and seeds
-      await initializeDatabase();
+      try {
+        // 1. Initialize SQLite Database schemas and seeds
+        await initializeDatabase();
+      } catch (e) {
+        console.error('DB init error (non-fatal):', e);
+      }
       // 2. Load SQLite records into Zustand reactive in-memory cache
       await loadAllData();
     }

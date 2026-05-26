@@ -46,10 +46,25 @@ export interface Loan {
   updated_at: number;
 }
 
+export interface RecurringTemplate {
+  id: string;
+  type: 'income' | 'expense';
+  amount: number;
+  category: string;
+  account: string;
+  note?: string;
+  day_of_month: number;
+  is_active: number; // 0 or 1
+  last_applied_month?: string; // FORMAT: 'YYYY-MM'
+  sync_status: 'synced' | 'pending' | 'deleted';
+  updated_at: number;
+}
+
 interface LocalStoreState {
   transactions: Transaction[];
   debts: Debt[];
   loans: Loan[];
+  recurringTemplates: RecurringTemplate[];
   isDbLoaded: boolean;
   isSyncing: boolean;
   isOnline: boolean;
@@ -108,6 +123,12 @@ interface LocalStoreState {
   addLoan: (loan: Omit<Loan, 'sync_status' | 'updated_at'>) => Promise<void>;
   updateLoan: (loan: Loan) => Promise<void>;
   deleteLoan: (id: string) => Promise<void>;
+
+  // Recurring Templates CRUD & Auto-Processor
+  addRecurringTemplate: (tmpl: Omit<RecurringTemplate, 'sync_status' | 'updated_at'>) => Promise<void>;
+  updateRecurringTemplate: (tmpl: RecurringTemplate) => Promise<void>;
+  deleteRecurringTemplate: (id: string) => Promise<void>;
+  checkAndApplyRecurringTransactions: () => Promise<void>;
 }
 
 export const useLocalStore = create<LocalStoreState>((set, get) => {
@@ -162,6 +183,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
     transactions: [],
     debts: [],
     loans: [],
+    recurringTemplates: [],
     isDbLoaded: false,
     isSyncing: false,
     isOnline: true,
@@ -262,6 +284,11 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
           "SELECT * FROM loans_installments WHERE sync_status != 'deleted' ORDER BY start_date DESC"
         );
 
+        // 4. Fetch recurring templates
+        const dbTemplates = await db.getAllAsync<RecurringTemplate>(
+          "SELECT * FROM recurring_templates WHERE sync_status != 'deleted' ORDER BY day_of_month ASC"
+        );
+
         // Load custom categories
         await get().loadCustomCategoriesList();
 
@@ -269,8 +296,12 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
           transactions: dbTxs,
           debts: dbDebts,
           loans: dbLoans,
+          recurringTemplates: dbTemplates,
           isDbLoaded: true,
         });
+
+        // Trigger auto-apply check for recurring transactions in background
+        await get().checkAndApplyRecurringTransactions();
       } catch (error) {
         console.error('Failed to load local SQLite records:', error);
         set({ isDbLoaded: true }); // Always clear the loader to prevent white screens!
@@ -309,8 +340,11 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
         const pendingLoans = await db.getAllAsync<Loan>(
           "SELECT * FROM loans_installments WHERE sync_status IN ('pending', 'deleted')"
         );
+        const pendingTemplates = await db.getAllAsync<RecurringTemplate>(
+          "SELECT * FROM recurring_templates WHERE sync_status IN ('pending', 'deleted')"
+        );
 
-        const totalPending = pendingTxs.length + pendingDebts.length + pendingLoans.length;
+        const totalPending = pendingTxs.length + pendingDebts.length + pendingLoans.length + pendingTemplates.length;
 
         if (totalPending > 0 || force) {
           // Simulate latency for premium sync indicator feel
@@ -406,6 +440,35 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
               }
             }
 
+            // Sync Recurring Templates
+            for (const tmpl of pendingTemplates) {
+              if (tmpl.sync_status === 'deleted') {
+                const { error } = await supabase.from('recurring_templates').delete().eq('id', tmpl.id).eq('user_id', userId);
+                if (error) {
+                  throw new Error(`Database synchronization failed. Please copy and paste the SQL commands from "supabase_schema.sql" into your Supabase SQL Editor first! (Error: ${error.message})`);
+                }
+                await db.runAsync('DELETE FROM recurring_templates WHERE id = ?', [tmpl.id]);
+              } else {
+                const { error } = await supabase.from('recurring_templates').upsert({
+                  id: tmpl.id,
+                  user_id: userId,
+                  type: tmpl.type,
+                  amount: tmpl.amount,
+                  category: tmpl.category,
+                  account: tmpl.account,
+                  note: tmpl.note || null,
+                  day_of_month: tmpl.day_of_month,
+                  is_active: tmpl.is_active,
+                  last_applied_month: tmpl.last_applied_month || null,
+                  updated_at: tmpl.updated_at
+                });
+                if (error) {
+                  throw new Error(`Database synchronization failed. It looks like your recurring_templates table is not provisioned. Please copy and paste the SQL schema from "supabase_schema.sql" into your Supabase SQL Editor first! (Error: ${error.message})`);
+                }
+                await db.runAsync("UPDATE recurring_templates SET sync_status = 'synced' WHERE id = ?", [tmpl.id]);
+              }
+            }
+
             // Backup Custom Categories
             const customCats = get().customCategories;
             if (customCats.length > 0) {
@@ -452,14 +515,24 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
               }
             }
 
+            for (const tmpl of pendingTemplates) {
+              if (tmpl.sync_status === 'deleted') {
+                await db.runAsync('DELETE FROM recurring_templates WHERE id = ?', [tmpl.id]);
+              } else {
+                await db.runAsync("UPDATE recurring_templates SET sync_status = 'synced' WHERE id = ?", [tmpl.id]);
+              }
+            }
+
             // Sync complete arrays to the mock registry
             const freshTxs = await db.getAllAsync<Transaction>("SELECT * FROM transactions");
             const freshDebts = await db.getAllAsync<Debt>("SELECT * FROM debts_lending");
             const freshLoans = await db.getAllAsync<Loan>("SELECT * FROM loans_installments");
+            const freshTemplates = await db.getAllAsync<RecurringTemplate>("SELECT * FROM recurring_templates");
 
             await simulatedCloud.db.backupTable(userId, 'transactions', freshTxs);
             await simulatedCloud.db.backupTable(userId, 'debts_lending', freshDebts);
             await simulatedCloud.db.backupTable(userId, 'loans_installments', freshLoans);
+            await simulatedCloud.db.backupTable(userId, 'recurring_templates', freshTemplates);
             await simulatedCloud.db.backupTable(userId, 'custom_categories', get().customCategories);
           }
 
@@ -841,27 +914,31 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
         let txs: Transaction[] = [];
         let debts: Debt[] = [];
         let loans: Loan[] = [];
+        let templates: RecurringTemplate[] = [];
         let cats: any[] = [];
 
         if (isSupabaseConfigured && supabase) {
           const { data: dbTxs, error: tErr } = await supabase.from('transactions').select('*').eq('user_id', userId);
           const { data: dbDebts, error: dErr } = await supabase.from('debts_lending').select('*').eq('user_id', userId);
           const { data: dbLoans, error: lErr } = await supabase.from('loans_installments').select('*').eq('user_id', userId);
+          const { data: dbTemplates, error: tmplErr } = await supabase.from('recurring_templates').select('*').eq('user_id', userId);
           const { data: dbCats, error: cErr } = await supabase.from('custom_categories').select('*').eq('user_id', userId);
           
-          if (tErr || dErr || lErr || cErr) {
-            console.error('Supabase fetch details:', { tErr, dErr, lErr, cErr });
+          if (tErr || dErr || lErr || tmplErr || cErr) {
+            console.error('Supabase fetch details:', { tErr, dErr, lErr, tmplErr, cErr });
             throw new Error('Cloud fetch failed. It looks like your database tables are not provisioned in Supabase. Please copy and paste the SQL schema from the file "supabase_schema.sql" into your Supabase Dashboard SQL Editor first to instantly create your database tables!');
           }
 
           txs = (dbTxs || []) as Transaction[];
           debts = (dbDebts || []) as Debt[];
           loans = (dbLoans || []) as Loan[];
+          templates = (dbTemplates || []) as RecurringTemplate[];
           cats = (dbCats || []) as any[];
         } else {
           txs = await simulatedCloud.db.fetchTable(userId, 'transactions');
           debts = await simulatedCloud.db.fetchTable(userId, 'debts_lending');
           loans = await simulatedCloud.db.fetchTable(userId, 'loans_installments');
+          templates = await simulatedCloud.db.fetchTable(userId, 'recurring_templates');
           cats = await simulatedCloud.db.fetchTable(userId, 'custom_categories');
         }
 
@@ -869,6 +946,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
         await db.runAsync('DELETE FROM transactions');
         await db.runAsync('DELETE FROM debts_lending');
         await db.runAsync('DELETE FROM loans_installments');
+        await db.runAsync('DELETE FROM recurring_templates');
 
         // Restore downloaded records
         for (const t of txs) {
@@ -892,6 +970,14 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
             `INSERT OR REPLACE INTO loans_installments (id, name, principal, annual_rate, tenure_months, start_date, monthly_emi, reminders_enabled, sync_status, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)`,
             [l.id, l.name, l.principal, l.annual_rate, l.tenure_months, l.start_date, l.monthly_emi, l.reminders_enabled, l.updated_at]
+          );
+        }
+
+        for (const tmpl of templates) {
+          await db.runAsync(
+            `INSERT OR REPLACE INTO recurring_templates (id, type, amount, category, account, note, day_of_month, is_active, last_applied_month, sync_status, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)`,
+            [tmpl.id, tmpl.type, tmpl.amount, tmpl.category, tmpl.account, tmpl.note ?? null, tmpl.day_of_month, tmpl.is_active, tmpl.last_applied_month ?? null, tmpl.updated_at]
           );
         }
 
@@ -923,6 +1009,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
         await db.runAsync('DELETE FROM transactions');
         await db.runAsync('DELETE FROM debts_lending');
         await db.runAsync('DELETE FROM loans_installments');
+        await db.runAsync('DELETE FROM recurring_templates');
 
         if (Platform.OS === 'web') {
           localStorage.removeItem('money_app_custom_categories');
@@ -934,6 +1021,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
           transactions: [],
           debts: [],
           loans: [],
+          recurringTemplates: [],
           customCategories: [],
         });
 
@@ -995,6 +1083,146 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
         lastSyncedAt: lastSync || null,
         categoryBudgets: budgets
       });
+    },
+
+    addRecurringTemplate: async (tmpl) => {
+      const now = Date.now();
+      const newTmpl: RecurringTemplate = {
+        ...tmpl,
+        sync_status: 'pending',
+        updated_at: now,
+      };
+
+      set((state) => ({
+        recurringTemplates: [newTmpl, ...state.recurringTemplates],
+      }));
+
+      try {
+        const db = await getDatabase();
+        await db.runAsync(
+          `INSERT INTO recurring_templates (id, type, amount, category, account, note, day_of_month, is_active, last_applied_month, sync_status, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [newTmpl.id, newTmpl.type, newTmpl.amount, newTmpl.category, newTmpl.account, newTmpl.note ?? null, newTmpl.day_of_month, newTmpl.is_active, newTmpl.last_applied_month ?? null, newTmpl.sync_status, newTmpl.updated_at]
+        );
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+        if (get().isOnline) {
+          get().triggerCloudSync();
+        }
+      } catch (error) {
+        console.error('Failed to insert recurring template into SQLite:', error);
+      }
+    },
+
+    updateRecurringTemplate: async (tmpl) => {
+      const updatedTmpl: RecurringTemplate = {
+        ...tmpl,
+        sync_status: 'pending',
+        updated_at: Date.now(),
+      };
+
+      set((state) => ({
+        recurringTemplates: state.recurringTemplates.map((t) => (t.id === tmpl.id ? updatedTmpl : t)),
+      }));
+
+      try {
+        const db = await getDatabase();
+        await db.runAsync(
+          `UPDATE recurring_templates 
+           SET type = ?, amount = ?, category = ?, account = ?, note = ?, day_of_month = ?, is_active = ?, last_applied_month = ?, sync_status = ?, updated_at = ?
+           WHERE id = ?`,
+          [updatedTmpl.type, updatedTmpl.amount, updatedTmpl.category, updatedTmpl.account, updatedTmpl.note ?? null, updatedTmpl.day_of_month, updatedTmpl.is_active, updatedTmpl.last_applied_month ?? null, updatedTmpl.sync_status, updatedTmpl.updated_at, updatedTmpl.id]
+        );
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+        if (get().isOnline) {
+          get().triggerCloudSync();
+        }
+      } catch (error) {
+        console.error('Failed to update recurring template in SQLite:', error);
+      }
+    },
+
+    deleteRecurringTemplate: async (id) => {
+      set((state) => ({
+        recurringTemplates: state.recurringTemplates.filter((t) => t.id !== id),
+      }));
+
+      try {
+        const db = await getDatabase();
+        await db.runAsync(
+          "UPDATE recurring_templates SET sync_status = 'deleted', updated_at = ? WHERE id = ?",
+          [Date.now(), id]
+        );
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+
+        if (get().isOnline) {
+          get().triggerCloudSync();
+        }
+      } catch (error) {
+        console.error('Failed to delete recurring template from SQLite:', error);
+      }
+    },
+
+    checkAndApplyRecurringTransactions: async () => {
+      const { recurringTemplates } = get();
+      const activeTemplates = recurringTemplates.filter(t => t.is_active === 1);
+      
+      const now = new Date();
+      const currentMonthStr = now.toISOString().substring(0, 7); // 'YYYY-MM'
+      const currentDay = now.getDate();
+
+      let hasAppliedAny = false;
+
+      for (const t of activeTemplates) {
+        if (t.last_applied_month !== currentMonthStr && currentDay >= t.day_of_month) {
+          try {
+            // 1. Generate Transaction
+            await get().addTransaction({
+              id: `tx-recurring-${Date.now()}-${t.id}`,
+              type: t.type,
+              amount: t.amount,
+              category: t.category,
+              account: t.account,
+              date: Date.now(),
+              note: `[Recurring] ${t.note || ''}`.trim()
+            });
+
+            // 2. Mark as applied
+            const updatedTmpl = {
+              ...t,
+              last_applied_month: currentMonthStr,
+            };
+            
+            // Execute updating template logic (avoid triggerCloudSync inside loops, we trigger once at the end)
+            const updatedTmplWithPending = {
+              ...updatedTmpl,
+              sync_status: 'pending' as const,
+              updated_at: Date.now()
+            };
+
+            set((state) => ({
+              recurringTemplates: state.recurringTemplates.map((item) => (item.id === t.id ? updatedTmplWithPending : item)),
+            }));
+
+            const db = await getDatabase();
+            await db.runAsync(
+              `UPDATE recurring_templates 
+               SET last_applied_month = ?, sync_status = 'pending', updated_at = ?
+               WHERE id = ?`,
+              [currentMonthStr, Date.now(), t.id]
+            );
+
+            hasAppliedAny = true;
+          } catch (e) {
+            console.error('Failed to apply recurring transaction template:', e);
+          }
+        }
+      }
+
+      if (hasAppliedAny && get().isOnline) {
+        get().triggerCloudSync();
+      }
     },
   };
 });

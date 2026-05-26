@@ -205,6 +205,7 @@ export const simulatedCloud = {
       await removeKey(`mock_cloud_db_transactions_${userId}`);
       await removeKey(`mock_cloud_db_debts_lending_${userId}`);
       await removeKey(`mock_cloud_db_loans_installments_${userId}`);
+      await removeKey(`mock_cloud_db_recurring_templates_${userId}`);
       await removeKey(`mock_cloud_db_custom_categories_${userId}`);
     }
   }

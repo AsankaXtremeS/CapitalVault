@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   StyleSheet, 
   Text, 
@@ -8,7 +8,8 @@ import {
   Modal, 
   TextInput, 
   Alert,
-  Dimensions
+  Dimensions,
+  Switch
 } from 'react-native';
 import { 
   ChevronLeft, 
@@ -18,7 +19,10 @@ import {
   Sparkles,
   Percent,
   HandCoins,
-  Wallet
+  Wallet,
+  CalendarRange,
+  Trash2,
+  Plus
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useLocalStore } from '@/hooks/useLocalStore';
@@ -27,6 +31,8 @@ import { generateBudgetReportPDF } from '@/utils/pdfGenerator';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const EXPENSE_CATEGORIES = ['Food', 'Social Life', 'Pets', 'Transport', 'Culture', 'Household', 'Apparel', 'Beauty', 'Health', 'Education', 'Gift', 'Other'];
+const INCOME_CATEGORIES = ['Salary', 'Allowance', 'Bonus', 'Petty cash', 'Other'];
+const ACCOUNTS = ['Cash', 'Accounts', 'Card'];
 
 const CATEGORY_EMOJIS: Record<string, string> = {
   Food: '🍜',
@@ -40,6 +46,10 @@ const CATEGORY_EMOJIS: Record<string, string> = {
   Health: '💊',
   Education: '📚',
   Gift: '🎁',
+  Salary: '💼',
+  Allowance: '🪙',
+  Bonus: '✨',
+  'Petty cash': '💵',
   Other: '📦',
 };
 
@@ -51,7 +61,11 @@ export default function BudgetScreen() {
     categoryBudgets,
     updateCategoryBudget,
     user,
-    customCategories
+    customCategories,
+    recurringTemplates,
+    addRecurringTemplate,
+    updateRecurringTemplate,
+    deleteRecurringTemplate
   } = useLocalStore();
 
   const [selectedMonth, setSelectedMonth] = useState(new Date());
@@ -60,6 +74,57 @@ export default function BudgetScreen() {
   const [budgetLimitModalVisible, setBudgetLimitModalVisible] = useState(false);
   const [limitCatName, setLimitCatName] = useState('');
   const [limitInputVal, setLimitInputVal] = useState('');
+
+  // Recurring Template Modal States
+  const [addTemplateModalVisible, setAddTemplateModalVisible] = useState(false);
+  const [tmplType, setTmplType] = useState<'income' | 'expense'>('expense');
+  const [tmplAmount, setTmplAmount] = useState('');
+  const [tmplCategory, setTmplCategory] = useState('');
+  const [tmplAccount, setTmplAccount] = useState('Cash');
+  const [tmplDayOfMonth, setTmplDayOfMonth] = useState('');
+  const [tmplNote, setTmplNote] = useState('');
+
+  const handleAddRecurringTemplate = async () => {
+    const amt = parseFloat(tmplAmount);
+    if (isNaN(amt) || amt <= 0) {
+      Alert.alert('Invalid Amount', 'Please enter a valid amount.');
+      return;
+    }
+    const day = parseInt(tmplDayOfMonth, 10);
+    if (isNaN(day) || day < 1 || day > 31) {
+      Alert.alert('Invalid Day', 'Please enter a valid day of month (1-31).');
+      return;
+    }
+    if (!tmplCategory) {
+      Alert.alert('Invalid Category', 'Please select a category.');
+      return;
+    }
+
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      await addRecurringTemplate({
+        id: `tmpl-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        type: tmplType,
+        amount: amt,
+        category: tmplCategory,
+        account: tmplAccount,
+        note: tmplNote.trim(),
+        day_of_month: day,
+        is_active: 1,
+      });
+      
+      // Reset form & close modal
+      setAddTemplateModalVisible(false);
+      setTmplAmount('');
+      setTmplCategory('');
+      setTmplAccount('Cash');
+      setTmplDayOfMonth('');
+      setTmplNote('');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Failed to save recurring template.');
+    }
+  };
 
   const getCategoryEmoji = (catName: string) => {
     if (CATEGORY_EMOJIS[catName]) return CATEGORY_EMOJIS[catName];
@@ -344,6 +409,100 @@ export default function BudgetScreen() {
             </View>
           ))
         )}
+
+        {/* Recurring Outlays & Inflows section */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Recurring Outlays & Inflows</Text>
+          <TouchableOpacity 
+            style={styles.addTemplateBtn}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setTmplType('expense');
+              setTmplAmount('');
+              setTmplCategory('');
+              setTmplAccount('Cash');
+              setTmplDayOfMonth('');
+              setTmplNote('');
+              setAddTemplateModalVisible(true);
+            }}
+          >
+            <Plus color="#0A84FF" size={14} style={{ marginRight: 4 }} />
+            <Text style={styles.addTemplateBtnText}>Add</Text>
+          </TouchableOpacity>
+        </View>
+
+        {recurringTemplates.filter(tmpl => tmpl.sync_status !== 'deleted').length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No recurring bills or scheduled incomes set up.</Text>
+          </View>
+        ) : (
+          recurringTemplates.filter(tmpl => tmpl.sync_status !== 'deleted').map(tmpl => {
+            const isExpense = tmpl.type === 'expense';
+            return (
+              <View key={tmpl.id} style={styles.recurringTemplateCard}>
+                <View style={styles.templateMainRow}>
+                  <View style={styles.templateLeftCol}>
+                    <View style={[styles.templateEmojiContainer, isExpense ? styles.emojiBgExpense : styles.emojiBgIncome]}>
+                      <Text style={styles.templateEmoji}>{getCategoryEmoji(tmpl.category)}</Text>
+                    </View>
+                    <View style={styles.templateMeta}>
+                      <Text style={styles.templateNote} numberOfLines={1}>
+                        {tmpl.note || tmpl.category}
+                      </Text>
+                      <Text style={styles.templateSubtitle}>
+                        Repeats on Day {tmpl.day_of_month} • {tmpl.category} • {tmpl.account}
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  <View style={styles.templateRightCol}>
+                    <Text style={[styles.templateAmount, isExpense ? styles.redText : styles.greenText]}>
+                      {isExpense ? '-' : '+'}${tmpl.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </Text>
+                    <View style={styles.templateActionRow}>
+                      <Switch
+                        value={tmpl.is_active === 1}
+                        onValueChange={async (newValue) => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          await updateRecurringTemplate({
+                            ...tmpl,
+                            is_active: newValue ? 1 : 0
+                          });
+                        }}
+                        trackColor={{ false: '#2C2C2E', true: '#30D158' }}
+                        thumbColor="#FFFFFF"
+                        ios_backgroundColor="#2C2C2E"
+                        style={styles.templateSwitch}
+                      />
+                      <TouchableOpacity
+                        style={styles.templateDeleteBtn}
+                        onPress={() => {
+                          Alert.alert(
+                            'Delete Template',
+                            'Are you sure you want to remove this recurring template?',
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              { 
+                                text: 'Delete', 
+                                style: 'destructive',
+                                onPress: async () => {
+                                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                                  await deleteRecurringTemplate(tmpl.id);
+                                }
+                              }
+                            ]
+                          );
+                        }}
+                      >
+                        <Trash2 color="#FF453A" size={16} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            );
+          })
+        )}
       </ScrollView>
 
       {/* Set Category Budget Limit Modal */}
@@ -384,6 +543,169 @@ export default function BudgetScreen() {
               <TouchableOpacity 
                 style={styles.saveBtn}
                 onPress={handleSaveBudgetLimit}
+              >
+                <Text style={styles.saveBtnText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Add Recurring Template Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={addTemplateModalVisible}
+        onRequestClose={() => setAddTemplateModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalContent, styles.largeModalContent]}>
+            <Text style={styles.modalTitle}>Add Recurring Template</Text>
+            
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10 }}>
+              {/* Type Switch Tab */}
+              <View style={styles.typeTabContainer}>
+                <TouchableOpacity
+                  style={[
+                    styles.typeTab,
+                    tmplType === 'expense' ? styles.typeTabExpenseActive : styles.typeTabInactive
+                  ]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setTmplType('expense');
+                    setTmplCategory('');
+                  }}
+                >
+                  <Text style={[styles.typeTabText, tmplType === 'expense' ? styles.whiteText : styles.grayText]}>
+                    Expense
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.typeTab,
+                    tmplType === 'income' ? styles.typeTabIncomeActive : styles.typeTabInactive
+                  ]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setTmplType('income');
+                    setTmplCategory('');
+                  }}
+                >
+                  <Text style={[styles.typeTabText, tmplType === 'income' ? styles.whiteText : styles.grayText]}>
+                    Income
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Amount Field */}
+              <View style={styles.formItem}>
+                <Text style={styles.formLabel}>Amount ($)</Text>
+                <TextInput
+                  keyboardType="numeric"
+                  placeholder="e.g. 99.99"
+                  placeholderTextColor="#8E8E93"
+                  style={styles.textInput}
+                  value={tmplAmount}
+                  onChangeText={setTmplAmount}
+                />
+              </View>
+
+              {/* Day of Month Field */}
+              <View style={styles.formItem}>
+                <Text style={styles.formLabel}>Due Day of Month (1 - 31)</Text>
+                <TextInput
+                  keyboardType="number-pad"
+                  placeholder="e.g. 1"
+                  placeholderTextColor="#8E8E93"
+                  style={styles.textInput}
+                  value={tmplDayOfMonth}
+                  onChangeText={setTmplDayOfMonth}
+                />
+              </View>
+
+              {/* Category Selector Grid */}
+              <View style={styles.formItem}>
+                <Text style={styles.formLabel}>Select Category</Text>
+                <View style={styles.categoryChipContainer}>
+                  {(tmplType === 'expense' 
+                    ? EXPENSE_CATEGORIES.concat(customCategories.filter(c => c.type === 'expense').map(c => c.name))
+                    : INCOME_CATEGORIES.concat(customCategories.filter(c => c.type === 'income').map(c => c.name))
+                  ).map(cat => {
+                    const isSelected = tmplCategory === cat;
+                    return (
+                      <TouchableOpacity
+                        key={cat}
+                        style={[
+                          styles.categoryChip,
+                          isSelected && (tmplType === 'expense' ? styles.categoryChipExpenseSelected : styles.categoryChipIncomeSelected)
+                        ]}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setTmplCategory(cat);
+                        }}
+                      >
+                        <Text style={[styles.categoryChipText, isSelected && styles.whiteText]}>
+                          {getCategoryEmoji(cat)} {cat}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Account Selector Row */}
+              <View style={styles.formItem}>
+                <Text style={styles.formLabel}>Select Account</Text>
+                <View style={styles.accountRow}>
+                  {ACCOUNTS.map(acc => {
+                    const isSelected = tmplAccount === acc;
+                    return (
+                      <TouchableOpacity
+                        key={acc}
+                        style={[
+                          styles.accountChip,
+                          isSelected && styles.accountChipSelected
+                        ]}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setTmplAccount(acc);
+                        }}
+                      >
+                        <Text style={[styles.accountChipText, isSelected && styles.whiteText]}>
+                          {acc}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Remarks/Note Field */}
+              <View style={styles.formItem}>
+                <Text style={styles.formLabel}>Remarks / Remarks Note (Optional)</Text>
+                <TextInput
+                  placeholder="e.g. Netflix, Rent, Salary Bonus"
+                  placeholderTextColor="#8E8E93"
+                  style={styles.textInput}
+                  value={tmplNote}
+                  onChangeText={setTmplNote}
+                />
+              </View>
+            </ScrollView>
+
+            <View style={styles.btnRow}>
+              <TouchableOpacity 
+                style={styles.cancelBtn}
+                onPress={() => {
+                  setAddTemplateModalVisible(false);
+                }}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.saveBtn, tmplType === 'expense' ? styles.saveBtnExpense : styles.saveBtnIncome]}
+                onPress={handleAddRecurringTemplate}
               >
                 <Text style={styles.saveBtnText}>Save</Text>
               </TouchableOpacity>
@@ -708,5 +1030,188 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+  },
+  
+  // Recurring items styles
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 16,
+    marginBottom: 10,
+  },
+  addTemplateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(10, 132, 255, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(10, 132, 255, 0.3)',
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  addTemplateBtnText: {
+    color: '#0A84FF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  recurringTemplateCard: {
+    backgroundColor: '#1C1C1E',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#2C2C2E',
+    padding: 14,
+    marginBottom: 10,
+  },
+  templateMainRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  templateLeftCol: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  templateEmojiContainer: {
+    width: 38,
+    height: 38,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  emojiBgExpense: {
+    backgroundColor: 'rgba(255, 69, 58, 0.12)',
+  },
+  emojiBgIncome: {
+    backgroundColor: 'rgba(48, 209, 88, 0.12)',
+  },
+  templateEmoji: {
+    fontSize: 18,
+  },
+  templateMeta: {
+    flex: 1,
+    marginRight: 8,
+  },
+  templateNote: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  templateSubtitle: {
+    color: '#8E8E93',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  templateRightCol: {
+    alignItems: 'flex-end',
+  },
+  templateAmount: {
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  templateActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  templateSwitch: {
+    transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }],
+    marginRight: -4,
+  },
+  templateDeleteBtn: {
+    padding: 6,
+    marginLeft: 8,
+  },
+  largeModalContent: {
+    maxWidth: 400,
+    maxHeight: '85%',
+  },
+  typeTabContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#121214',
+    borderRadius: 8,
+    padding: 4,
+    marginBottom: 16,
+  },
+  typeTab: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 6,
+  },
+  typeTabExpenseActive: {
+    backgroundColor: '#FF453A',
+  },
+  typeTabIncomeActive: {
+    backgroundColor: '#30D158',
+  },
+  typeTabInactive: {
+    backgroundColor: 'transparent',
+  },
+  typeTabText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  categoryChipContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 6,
+    marginHorizontal: -4,
+  },
+  categoryChip: {
+    backgroundColor: '#121214',
+    borderWidth: 1,
+    borderColor: '#2C2C2E',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 20,
+    margin: 4,
+  },
+  categoryChipExpenseSelected: {
+    borderColor: '#FF453A',
+    backgroundColor: 'rgba(255, 69, 58, 0.15)',
+  },
+  categoryChipIncomeSelected: {
+    borderColor: '#30D158',
+    backgroundColor: 'rgba(48, 209, 88, 0.15)',
+  },
+  categoryChipText: {
+    color: '#8E8E93',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  accountRow: {
+    flexDirection: 'row',
+    marginTop: 6,
+  },
+  accountChip: {
+    flex: 1,
+    backgroundColor: '#121214',
+    borderWidth: 1,
+    borderColor: '#2C2C2E',
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 8,
+    marginHorizontal: 4,
+  },
+  accountChipSelected: {
+    borderColor: '#0A84FF',
+    backgroundColor: 'rgba(10, 132, 255, 0.15)',
+  },
+  accountChipText: {
+    color: '#8E8E93',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  saveBtnExpense: {
+    backgroundColor: '#FF453A',
+  },
+  saveBtnIncome: {
+    backgroundColor: '#30D158',
+  },
+  grayText: {
+    color: '#8E8E93',
   },
 });
