@@ -68,6 +68,7 @@ export async function compressImageToLimit(
 
     // Move to permanent documents folder if it is in a temporary folder
     const fileName = `bill_${Date.now()}_compressed.jpg`;
+    // @ts-ignore
     const destinationPath = `${FileSystem.documentDirectory}${fileName}`;
     await FileSystem.copyAsync({
       from: currentUri,

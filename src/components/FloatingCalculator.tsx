@@ -1,74 +1,174 @@
-import React, { useState } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Dimensions } from 'react-native';
-import { PanGestureHandler, GestureHandlerRootView } from 'react-native-gesture-handler';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  useAnimatedGestureHandler,
-  withSpring,
-  runOnJS,
-} from 'react-native-reanimated';
-import { Calculator, X, ChevronRight, CornerDownLeft } from 'lucide-react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Animated, PanResponder } from 'react-native';
+import { Calculator, X, CornerDownLeft } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import { useLocalStore } from '@/hooks/useLocalStore';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const BUBBLE_SIZE = 60;
-const CALC_WIDTH = 260;
-const CALC_HEIGHT = 360;
+const CALC_WIDTH = 280;
+const CALC_HEIGHT = 420; // Increased to 420px to prevent overlap and support larger, premium key touch targets
 
 interface FloatingCalculatorProps {
   onInsert: (value: string) => void;
 }
 
 export default function FloatingCalculator({ onInsert }: FloatingCalculatorProps) {
+  const { isCalculatorOpen, openCalculator, closeCalculator } = useLocalStore();
   const [isOpen, setIsOpen] = useState(false);
   const [expression, setExpression] = useState('');
   const [result, setResult] = useState('0');
 
-  // Shared values for animated dragging coordinates
-  const translateX = useSharedValue(SCREEN_WIDTH - BUBBLE_SIZE - 20);
-  const translateY = useSharedValue(120);
+  // Align initial coordinates perfectly floating directly above the main FAB button
+  const initialX = SCREEN_WIDTH - BUBBLE_SIZE - 24;
+  const initialY = SCREEN_HEIGHT - BUBBLE_SIZE - 160; // Perfectly calculated: tab bar (64) + FAB bottom (24) + FAB height (60) + gap (12)
 
-  // Gesture handler to control Pan dragging
-  const gestureHandler = useAnimatedGestureHandler({
-    onStart: (_, ctx: any) => {
-      ctx.startX = translateX.value;
-      ctx.startY = translateY.value;
-    },
-    onActive: (event, ctx) => {
-      translateX.value = ctx.startX + event.translationX;
-      translateY.value = ctx.startY + event.translationY;
-    },
-    onEnd: (event) => {
-      // Snap to closest horizontal edge (left or right side of screen)
-      const snapLeft = 20;
-      const snapRight = SCREEN_WIDTH - BUBBLE_SIZE - 20;
-      
-      const snapX = translateX.value + event.velocityX * 0.1 < SCREEN_WIDTH / 2 ? snapLeft : snapRight;
-      translateX.value = withSpring(snapX, { damping: 15 });
+  // Track snapped positions to adjust panel expansion dynamically
+  const [snappedX, setSnappedX] = useState(initialX);
+  const [snappedY, setSnappedY] = useState(initialY);
 
-      // Clamp vertical bounds to keep bubble fully visible
-      const minY = 50;
-      const maxY = SCREEN_HEIGHT - BUBBLE_SIZE - 80;
-      if (translateY.value < minY) {
-        translateY.value = withSpring(minY);
-      } else if (translateY.value > maxY) {
-        translateY.value = withSpring(maxY);
-      }
-    },
-  });
+  // Track coordinates via absolute references to avoid private variable checks
+  const position = useRef({ x: initialX, y: initialY }).current;
+  const pan = useRef(new Animated.ValueXY({ x: initialX, y: initialY })).current;
 
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [
-        { translateX: translateX.value },
-        { translateY: translateY.value },
-      ],
-    };
-  });
+  // React Native PanResponder for seamless dragging anywhere on the screen
+  const isOpenRef = useRef(isOpen);
+  isOpenRef.current = isOpen;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      onPanResponderGrant: (e, gestureState) => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      },
+      onPanResponderMove: (e, gestureState) => {
+        // Apply relative drag translations
+        pan.setValue({
+          x: position.x + gestureState.dx,
+          y: position.y + gestureState.dy,
+        });
+      },
+      onPanResponderRelease: (e, gestureState) => {
+        const isCurrentlyOpen = isOpenRef.current;
+        if (!isCurrentlyOpen) {
+          // Detect a clean tap (minimal finger movement)
+          const distance = Math.sqrt(gestureState.dx * gestureState.dx + gestureState.dy * gestureState.dy);
+          const isTap = distance < 8;
+          
+          if (isTap) {
+            toggleCalculator();
+            return;
+          }
+
+          const currentX = position.x + gestureState.dx;
+          const currentY = position.y + gestureState.dy;
+
+          // Snap logic to closest vertical border
+          const isLeft = currentX < SCREEN_WIDTH / 2 - BUBBLE_SIZE / 2;
+          const snapX = isLeft ? 20 : SCREEN_WIDTH - BUBBLE_SIZE - 24;
+          
+          // Prevent overlapping with the Add FAB button on the right side
+          const maxY = isLeft 
+            ? SCREEN_HEIGHT - BUBBLE_SIZE - 80 
+            : SCREEN_HEIGHT - BUBBLE_SIZE - 160; // Keep space for the FAB and gap on the right
+          
+          const clampedY = Math.max(60, Math.min(maxY, currentY));
+
+          // Save final snapped positions
+          position.x = snapX;
+          position.y = clampedY;
+          
+          setSnappedX(snapX);
+          setSnappedY(clampedY);
+
+          Animated.spring(pan, {
+            toValue: { x: snapX, y: clampedY },
+            useNativeDriver: false,
+            friction: 6,
+            tension: 40,
+          }).start();
+        } else {
+          // Draggable Open Calculator Panel Clamping
+          const currentX = position.x + gestureState.dx;
+          const currentY = position.y + gestureState.dy;
+
+          // Keep panel fully inside screen boundaries
+          const clampedX = Math.max(10, Math.min(SCREEN_WIDTH - CALC_WIDTH - 10, currentX));
+          const clampedY = Math.max(40, Math.min(SCREEN_HEIGHT - CALC_HEIGHT - 60, currentY));
+
+          position.x = clampedX;
+          position.y = clampedY;
+
+          Animated.spring(pan, {
+            toValue: { x: clampedX, y: clampedY },
+            useNativeDriver: false,
+            friction: 7,
+            tension: 40,
+          }).start();
+        }
+      },
+      onPanResponderTerminationRequest: () => false,
+      onShouldBlockNativeResponder: () => true,
+    })
+  ).current;
+
+  // React to programmatic store calculator toggles
+  useEffect(() => {
+    if (isCalculatorOpen && !isOpen) {
+      toggleCalculator();
+    } else if (!isCalculatorOpen && isOpen) {
+      toggleCalculator();
+    }
+  }, [isCalculatorOpen]);
 
   const toggleCalculator = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    if (!isOpen) {
+      // Open Calculator: Animate to Center of the screen!
+      const centerX = (SCREEN_WIDTH - CALC_WIDTH) / 2;
+      const centerY = (SCREEN_HEIGHT - CALC_HEIGHT) / 2;
+      
+      // Save current coordinates as snapped coordinates to return to later
+      setSnappedX(position.x);
+      setSnappedY(position.y);
+      
+      position.x = centerX;
+      position.y = centerY;
+      
+      Animated.spring(pan, {
+        toValue: { x: centerX, y: centerY },
+        useNativeDriver: false,
+        friction: 7,
+        tension: 35,
+      }).start();
+
+      if (!isCalculatorOpen) {
+        openCalculator();
+      }
+    } else {
+      // Close Calculator: Return back to snapped bubble position!
+      const targetX = snappedX;
+      const targetY = snappedY;
+      
+      position.x = targetX;
+      position.y = targetY;
+      
+      Animated.spring(pan, {
+        toValue: { x: targetX, y: targetY },
+        useNativeDriver: false,
+        friction: 7,
+        tension: 35,
+      }).start();
+
+      if (isCalculatorOpen) {
+        closeCalculator();
+      }
+    }
+
     setIsOpen(!isOpen);
   };
 
@@ -83,21 +183,29 @@ export default function FloatingCalculator({ onInsert }: FloatingCalculatorProps
 
     if (val === '=') {
       try {
-        // Sanitize and safely calculate standard arithmetic
-        const sanitized = expression.replace(/x/g, '*').replace(/÷/g, '/');
-        // Simple evaluator using standard math logic (safe bounds checks)
+        let sanitized = expression.replace(/x/g, '*').replace(/÷/g, '/').replace(/×/g, '*');
+        
+        // Resilience: clean trailing mathematical operators
+        while (/[\+\-\*\/]$/.test(sanitized)) {
+          sanitized = sanitized.slice(0, -1);
+        }
+
+        if (!sanitized.trim()) {
+          setResult('0');
+          return;
+        }
+
         if (!/^[0-9+\-*/().\s]+$/.test(sanitized)) {
-          throw new Error('Invalid Math Characters');
+          throw new Error('Invalid Syntax');
         }
         
-        // Use Function instead of eval for safer compilation sandboxing
         const evalResult = new Function(`return (${sanitized})`)();
         if (evalResult === undefined || isNaN(evalResult) || !isFinite(evalResult)) {
           setResult('Error');
         } else {
           const finalVal = Number(evalResult.toFixed(2)).toString();
-          setResult(finalVal);
           setExpression(finalVal);
+          setResult(finalVal);
         }
       } catch (err) {
         setResult('Error');
@@ -105,8 +213,28 @@ export default function FloatingCalculator({ onInsert }: FloatingCalculatorProps
       return;
     }
 
-    // Standard operator append
-    setExpression((prev) => prev + val);
+    // Append digit or operator to formula
+    const newExpression = expression + val;
+    setExpression(newExpression);
+
+    // Live background calculations as the user types digits
+    try {
+      let sanitized = newExpression.replace(/x/g, '*').replace(/÷/g, '/').replace(/×/g, '*');
+      
+      // Strip trailing operators for running evaluation
+      while (/[\+\-\*\/]$/.test(sanitized)) {
+        sanitized = sanitized.slice(0, -1);
+      }
+
+      if (sanitized.trim() && /^[0-9+\-*/().\s]+$/.test(sanitized)) {
+        const evalResult = new Function(`return (${sanitized})`)();
+        if (evalResult !== undefined && !isNaN(evalResult) && isFinite(evalResult)) {
+          setResult(Number(evalResult.toFixed(2)).toString());
+        }
+      }
+    } catch (e) {
+      // Ignore intermediate syntax failures while typing formula
+    }
   };
 
   const handleInsert = () => {
@@ -116,137 +244,153 @@ export default function FloatingCalculator({ onInsert }: FloatingCalculatorProps
   };
 
   return (
-    <Animated.View style={[styles.container, animatedStyle]}>
-      {!isOpen ? (
-        // Draggable Floating Bubble
-        <PanGestureHandler onGestureEvent={gestureHandler}>
-          <Animated.View>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={toggleCalculator}
-              style={styles.bubble}
-            >
-              <Calculator color="#FFFFFF" size={26} />
-            </TouchableOpacity>
-          </Animated.View>
-        </PanGestureHandler>
-      ) : (
-        // Expanded Glassmorphism Calculator panel
-        <View style={styles.calcPanel}>
-          {/* Header Controls */}
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>In-App Calculator</Text>
+    <View style={styles.fullscreenOverlay} pointerEvents="box-none">
+      <Animated.View 
+        style={[
+          styles.container, 
+          {
+            left: pan.x,
+            top: pan.y,
+            width: isOpen ? CALC_WIDTH : BUBBLE_SIZE,
+            height: isOpen ? CALC_HEIGHT : BUBBLE_SIZE,
+          }
+        ]}
+      >
+        {!isOpen ? (
+          // Draggable Floating Bubble (Uses standard panHandlers for 100% touch capture)
+          <View
+            {...panResponder.panHandlers}
+            style={styles.bubble}
+          >
+            <Calculator color="#FFFFFF" size={26} />
+          </View>
+        ) : (
+          // Expanded Glassmorphism Calculator panel fitting 100% inside container
+          <View style={styles.calcPanel}>
+            {/* Header Controls (Draggable when open!) */}
+            <View {...panResponder.panHandlers} style={styles.header}>
+              <Text style={styles.headerTitle}>In-App Calculator ✥</Text>
+            </View>
+
+            {/* Close Button positioned absolutely (sibling to prevent PanResponder touch intercept) */}
             <TouchableOpacity onPress={toggleCalculator} style={styles.closeBtn}>
               <X color="#8E8E93" size={18} />
             </TouchableOpacity>
+
+            {/* Screen Output Display */}
+            <View style={styles.displayContainer}>
+              <Text numberOfLines={1} style={styles.expressionText}>
+                {expression ? `= ${result}` : ' '}
+              </Text>
+              <Text numberOfLines={1} style={styles.resultText}>
+                {expression || '0'}
+              </Text>
+            </View>
+
+            {/* Keys Matrix Grid */}
+            <View style={styles.keysGrid}>
+              <View style={styles.row}>
+                <TouchableOpacity onPress={() => handleKeyPress('C')} style={[styles.key, styles.keyAction]}>
+                  <Text style={styles.keyTextAction}>C</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleKeyPress('(')} style={[styles.key, styles.keyAction]}>
+                  <Text style={styles.keyTextAction}>(</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleKeyPress(')')} style={[styles.key, styles.keyAction]}>
+                  <Text style={styles.keyTextAction}>)</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleKeyPress('÷')} style={[styles.key, styles.keyOperator]}>
+                  <Text style={styles.keyTextOperator}>÷</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.row}>
+                <TouchableOpacity onPress={() => handleKeyPress('7')} style={styles.key}>
+                  <Text style={styles.keyText}>7</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleKeyPress('8')} style={styles.key}>
+                  <Text style={styles.keyText}>8</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleKeyPress('9')} style={styles.key}>
+                  <Text style={styles.keyText}>9</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleKeyPress('x')} style={[styles.key, styles.keyOperator]}>
+                  <Text style={styles.keyTextOperator}>×</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.row}>
+                <TouchableOpacity onPress={() => handleKeyPress('4')} style={styles.key}>
+                  <Text style={styles.keyText}>4</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleKeyPress('5')} style={styles.key}>
+                  <Text style={styles.keyText}>5</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleKeyPress('6')} style={styles.key}>
+                  <Text style={styles.keyText}>6</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleKeyPress('-')} style={[styles.key, styles.keyOperator]}>
+                  <Text style={styles.keyTextOperator}>-</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.row}>
+                <TouchableOpacity onPress={() => handleKeyPress('1')} style={styles.key}>
+                  <Text style={styles.keyText}>1</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleKeyPress('2')} style={styles.key}>
+                  <Text style={styles.keyText}>2</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleKeyPress('3')} style={styles.key}>
+                  <Text style={styles.keyText}>3</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleKeyPress('+')} style={[styles.key, styles.keyOperator]}>
+                  <Text style={styles.keyTextOperator}>+</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.row}>
+                <TouchableOpacity onPress={() => handleKeyPress('0')} style={[styles.key, styles.keyZero]}>
+                  <Text style={styles.keyText}>0</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleKeyPress('.')} style={styles.key}>
+                  <Text style={styles.keyText}>.</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleKeyPress('=')} style={[styles.key, styles.keyEquals]}>
+                  <Text style={styles.keyTextEquals}>=</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Insert PIP Button */}
+            <TouchableOpacity onPress={handleInsert} style={styles.insertBtn}>
+              <CornerDownLeft color="#FFFFFF" size={16} />
+              <Text style={styles.insertBtnText}>Insert Calculation</Text>
+            </TouchableOpacity>
           </View>
-
-          {/* Screen Output Display */}
-          <View style={styles.displayContainer}>
-            <Text numberOfLines={1} style={styles.expressionText}>
-              {expression || '0'}
-            </Text>
-            <Text numberOfLines={1} style={styles.resultText}>
-              {result}
-            </Text>
-          </View>
-
-          {/* Keys Matrix Grid */}
-          <View style={styles.keysGrid}>
-            <View style={styles.row}>
-              <TouchableOpacity onPress={() => handleKeyPress('C')} style={[styles.key, styles.keyAction]}>
-                <Text style={styles.keyTextAction}>C</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleKeyPress('(')} style={[styles.key, styles.keyAction]}>
-                <Text style={styles.keyTextAction}>(</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleKeyPress(')')} style={[styles.key, styles.keyAction]}>
-                <Text style={styles.keyTextAction}>)</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleKeyPress('÷')} style={[styles.key, styles.keyOperator]}>
-                <Text style={styles.keyTextOperator}>÷</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.row}>
-              <TouchableOpacity onPress={() => handleKeyPress('7')} style={styles.key}>
-                <Text style={styles.keyText}>7</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleKeyPress('8')} style={styles.key}>
-                <Text style={styles.keyText}>8</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleKeyPress('9')} style={styles.key}>
-                <Text style={styles.keyText}>9</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleKeyPress('x')} style={[styles.key, styles.keyOperator]}>
-                <Text style={styles.keyTextOperator}>×</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.row}>
-              <TouchableOpacity onPress={() => handleKeyPress('4')} style={styles.key}>
-                <Text style={styles.keyText}>4</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleKeyPress('5')} style={styles.key}>
-                <Text style={styles.keyText}>5</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleKeyPress('6')} style={styles.key}>
-                <Text style={styles.keyText}>6</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleKeyPress('-')} style={[styles.key, styles.keyOperator]}>
-                <Text style={styles.keyTextOperator}>-</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.row}>
-              <TouchableOpacity onPress={() => handleKeyPress('1')} style={styles.key}>
-                <Text style={styles.keyText}>1</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleKeyPress('2')} style={styles.key}>
-                <Text style={styles.keyText}>2</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleKeyPress('3')} style={styles.key}>
-                <Text style={styles.keyText}>3</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleKeyPress('+')} style={[styles.key, styles.keyOperator]}>
-                <Text style={styles.keyTextOperator}>+</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.row}>
-              <TouchableOpacity onPress={() => handleKeyPress('0')} style={[styles.key, styles.keyZero]}>
-                <Text style={styles.keyText}>0</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleKeyPress('.')} style={styles.key}>
-                <Text style={styles.keyText}>.</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleKeyPress('=')} style={[styles.key, styles.keyEquals]}>
-                <Text style={styles.keyTextEquals}>=</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Insert PIP Button */}
-          <TouchableOpacity onPress={handleInsert} style={styles.insertBtn}>
-            <CornerDownLeft color="#FFFFFF" size={16} />
-            <Text style={styles.insertBtnText}>Insert Calculation</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-    </Animated.View>
+        )}
+      </Animated.View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  fullscreenOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 99999,
+  },
   container: {
     position: 'absolute',
-    zIndex: 9999,
   },
   bubble: {
     width: BUBBLE_SIZE,
     height: BUBBLE_SIZE,
     borderRadius: BUBBLE_SIZE / 2,
-    backgroundColor: '#AF52DE', // Royal Purple contrast accent
+    backgroundColor: '#AF52DE',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -258,27 +402,25 @@ const styles = StyleSheet.create({
     borderColor: '#C382E6',
   },
   calcPanel: {
-    width: CALC_WIDTH,
-    height: CALC_HEIGHT,
+    width: '100%',
+    height: '100%',
     borderRadius: 20,
-    backgroundColor: '#1C1C1E', // Sleek slate container
+    backgroundColor: '#1C1C1E',
     borderWidth: 1.5,
     borderColor: '#2C2C2E',
-    padding: 12,
+    padding: 14,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.5,
     shadowRadius: 15,
     elevation: 12,
-    // Negative offset adjustment to expand relative to bubble drag anchors
-    marginLeft: -CALC_WIDTH + BUBBLE_SIZE,
-    marginTop: -20,
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    height: 28,
+    marginBottom: 10,
+    paddingRight: 32, // Prevent overlap with the close button
   },
   headerTitle: {
     fontSize: 13,
@@ -286,14 +428,19 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   closeBtn: {
-    padding: 4,
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    zIndex: 99,
+    padding: 6,
   },
   displayContainer: {
     backgroundColor: '#121214',
     borderRadius: 10,
     padding: 8,
     alignItems: 'flex-end',
-    marginBottom: 10,
+    height: 62,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: '#1C1C1E',
   },
@@ -308,33 +455,32 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   keysGrid: {
-    flex: 1,
+    height: 224,
     justifyContent: 'space-between',
   },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 6,
   },
   key: {
-    width: 48,
-    height: 38,
+    width: 50,
+    height: 40,
     borderRadius: 8,
     backgroundColor: '#2C2C2E',
     justifyContent: 'center',
     alignItems: 'center',
   },
   keyZero: {
-    width: 104, // spans two spaces
+    width: 110,
   },
   keyAction: {
     backgroundColor: '#3A3A3C',
   },
   keyOperator: {
-    backgroundColor: '#AF52DE', // Purple accent
+    backgroundColor: '#AF52DE',
   },
   keyEquals: {
-    backgroundColor: '#0A84FF', // Electric blue accent
+    backgroundColor: '#0A84FF',
   },
   keyText: {
     fontSize: 16,
@@ -362,8 +508,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 10,
-    height: 36,
-    marginTop: 8,
+    height: 40,
+    marginTop: 12,
   },
   insertBtnText: {
     color: '#FFFFFF',

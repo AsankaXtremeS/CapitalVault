@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, AppState, Dimensions } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, AppState, Dimensions, Platform } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import * as Haptics from 'expo-haptics';
@@ -8,6 +8,21 @@ import Animated, { FadeIn, FadeOut, SlideInDown } from 'react-native-reanimated'
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SECURE_PIN_KEY = 'money_app_lock_pin';
+
+const safeGetSecureItem = async (key: string): Promise<string | null> => {
+  if (Platform.OS === 'web') {
+    return localStorage.getItem(key);
+  }
+  return await SecureStore.getItemAsync(key);
+};
+
+const safeSetSecureItem = async (key: string, value: string): Promise<void> => {
+  if (Platform.OS === 'web') {
+    localStorage.setItem(key, value);
+    return;
+  }
+  await SecureStore.setItemAsync(key, value);
+};
 
 export default function PINAppLock({ children }: { children: React.ReactNode }) {
   const [isLocked, setIsLocked] = useState(false);
@@ -41,9 +56,9 @@ export default function PINAppLock({ children }: { children: React.ReactNode }) 
   const setupSecurity = async () => {
     try {
       // Setup default PIN ('1234') if no lock is configured
-      const existingPin = await SecureStore.getItemAsync(SECURE_PIN_KEY);
+      const existingPin = await safeGetSecureItem(SECURE_PIN_KEY);
       if (!existingPin) {
-        await SecureStore.setItemAsync(SECURE_PIN_KEY, '1234');
+        await safeSetSecureItem(SECURE_PIN_KEY, '1234');
       }
 
       // Check device biometric hardware capabilities
@@ -92,7 +107,7 @@ export default function PINAppLock({ children }: { children: React.ReactNode }) 
 
     // If entered 4 digits, verify against Secure Store PIN
     if (newPin.length === 4) {
-      const correctPin = await SecureStore.getItemAsync(SECURE_PIN_KEY);
+      const correctPin = await safeGetSecureItem(SECURE_PIN_KEY);
       
       if (newPin === correctPin || newPin === '1234') { // Allow '1234' as standard master key
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

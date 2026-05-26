@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { getDatabase } from '../utils/db';
 import NetInfo from '@react-native-community/netinfo';
 import * as Haptics from 'expo-haptics';
+import { Platform } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 
 export interface Transaction {
   id: string;
@@ -51,6 +53,19 @@ interface LocalStoreState {
   isSyncing: boolean;
   isOnline: boolean;
   
+  // Floating Calculator Pipe & State
+  calculatorPipeValue: string | null;
+  isCalculatorOpen: boolean;
+  pipeValue: (val: string) => void;
+  clearPipeValue: () => void;
+  openCalculator: () => void;
+  closeCalculator: () => void;
+
+  // Custom Categories
+  customCategories: { name: string; emoji: string; type: 'income' | 'expense' }[];
+  addCustomCategory: (cat: { name: string; emoji: string; type: 'income' | 'expense' }) => Promise<void>;
+  loadCustomCategoriesList: () => Promise<void>;
+  
   // Cache utilities
   loadAllData: () => Promise<void>;
   setOnlineStatus: (status: boolean) => void;
@@ -78,13 +93,84 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
     get().setOnlineStatus(!!state.isConnected);
   });
 
+  const getRelativeDateMs = (dayOffset: number): number => {
+    const d = new Date();
+    d.setDate(d.getDate() - dayOffset);
+    return d.getTime();
+  };
+
+  const seedTransactions: Transaction[] = [
+    { id: 'tx-1', type: 'income', amount: 13000, category: 'Salary', account: 'Accounts', date: getRelativeDateMs(21), note: 'Monthly Salary payout', description: 'Core salary transfer from employer', bill_path: undefined, sync_status: 'synced', updated_at: Date.now() },
+    { id: 'tx-2', type: 'income', amount: 5000, category: 'Allowance', account: 'Cash', date: getRelativeDateMs(15), note: 'Birthday present allowance', description: 'Gift from parents', bill_path: undefined, sync_status: 'synced', updated_at: Date.now() },
+    { id: 'tx-3', type: 'expense', amount: 6500, category: 'Household', account: 'Accounts', date: getRelativeDateMs(21), note: 'Appartment Rent payment', description: 'Monthly lease due', bill_path: undefined, sync_status: 'synced', updated_at: Date.now() },
+    { id: 'tx-4', type: 'expense', amount: 4125, category: 'Food', account: 'Cash', date: getRelativeDateMs(19), note: 'Groceries stocking', description: 'Supermarket bulk buy', bill_path: undefined, sync_status: 'synced', updated_at: Date.now() },
+    { id: 'tx-5', type: 'expense', amount: 2040, category: 'Transport', account: 'Card', date: getRelativeDateMs(12), note: 'Train ticket subscription', description: 'Train seasonal card', bill_path: undefined, sync_status: 'synced', updated_at: Date.now() },
+    { id: 'tx-6', type: 'expense', amount: 1800, category: 'Beauty', account: 'Card', date: getRelativeDateMs(7), note: 'Hair care treatments', description: 'Salon package reservation', bill_path: undefined, sync_status: 'synced', updated_at: Date.now() },
+    { id: 'tx-7', type: 'expense', amount: 1100, category: 'Social Life', account: 'Cash', date: getRelativeDateMs(6), note: 'Dinner outing with friends', description: 'Fine dining', bill_path: undefined, sync_status: 'synced', updated_at: Date.now() },
+    { id: 'tx-8', type: 'expense', amount: 945, category: 'Telecommunications', account: 'Card', date: getRelativeDateMs(2), note: 'Internet and Mobile packages', description: 'Unlimited connection plan', bill_path: undefined, sync_status: 'synced', updated_at: Date.now() },
+    { id: 'tx-9', type: 'expense', amount: 175, category: 'Other', account: 'Cash', date: getRelativeDateMs(0), note: 'Miscellaneous small items', description: 'Quick buy', bill_path: undefined, sync_status: 'pending', updated_at: Date.now() }
+  ];
+
+  const seedDebts: Debt[] = [
+    { id: 'debt-1', type: 'lending', contact_name: 'John Doe', contact_phone: '+94771234567', principal: 1500, due_date: getRelativeDateMs(-30), interest_rate: 2.5, payment_progress: 500, sync_status: 'synced', updated_at: Date.now() },
+    { id: 'debt-2', type: 'borrowing', contact_name: 'Jane Smith', contact_phone: '+94711122334', principal: 2500, due_date: getRelativeDateMs(-15), interest_rate: 0.0, payment_progress: 1000, sync_status: 'synced', updated_at: Date.now() }
+  ];
+
+  const seedLoans: Loan[] = [
+    { id: 'loan-1', name: 'Car Leasing (Toyota Prius)', principal: 18000, annual_rate: 8.5, tenure_months: 36, start_date: getRelativeDateMs(120), monthly_emi: 568.21, reminders_enabled: 1, sync_status: 'synced', updated_at: Date.now() },
+    { id: 'loan-2', name: 'Education Loan (Harvard Online)', principal: 5000, annual_rate: 5.0, tenure_months: 12, start_date: getRelativeDateMs(60), monthly_emi: 428.04, reminders_enabled: 1, sync_status: 'synced', updated_at: Date.now() }
+  ];
+
   return {
-    transactions: [],
-    debts: [],
-    loans: [],
+    transactions: seedTransactions,
+    debts: seedDebts,
+    loans: seedLoans,
     isDbLoaded: false,
     isSyncing: false,
     isOnline: true,
+    calculatorPipeValue: null,
+    isCalculatorOpen: false,
+
+    pipeValue: (val: string) => set({ calculatorPipeValue: val }),
+    clearPipeValue: () => set({ calculatorPipeValue: null }),
+    openCalculator: () => set({ isCalculatorOpen: true }),
+    closeCalculator: () => set({ isCalculatorOpen: false }),
+
+    customCategories: [],
+    addCustomCategory: async (cat) => {
+      const list = [...get().customCategories, cat];
+      set({ customCategories: list });
+      const json = JSON.stringify(list);
+      if (Platform.OS === 'web') {
+        localStorage.setItem('money_app_custom_categories', json);
+      } else {
+        try {
+          await SecureStore.setItemAsync('money_app_custom_categories', json);
+        } catch (e) {
+          // ignore
+        }
+      }
+    },
+    loadCustomCategoriesList: async () => {
+      let json: string | null = null;
+      if (Platform.OS === 'web') {
+        json = localStorage.getItem('money_app_custom_categories');
+      } else {
+        try {
+          json = await SecureStore.getItemAsync('money_app_custom_categories');
+        } catch (e) {
+          // ignore
+        }
+      }
+      if (json) {
+        try {
+          const list = JSON.parse(json);
+          set({ customCategories: list });
+        } catch (e) {
+          // ignore
+        }
+      }
+    },
 
     setOnlineStatus: (isOnline: boolean) => {
       const wasOffline = !get().isOnline;
@@ -115,14 +201,18 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
           "SELECT * FROM loans_installments WHERE sync_status != 'deleted' ORDER BY start_date DESC"
         );
 
+        // Load custom categories
+        await get().loadCustomCategoriesList();
+
         set({
-          transactions: dbTxs || [],
-          debts: dbDebts || [],
-          loans: dbLoans || [],
+          transactions: dbTxs.length > 0 ? dbTxs : seedTransactions,
+          debts: dbDebts.length > 0 ? dbDebts : seedDebts,
+          loans: dbLoans.length > 0 ? dbLoans : seedLoans,
           isDbLoaded: true,
         });
       } catch (error) {
         console.error('Failed to load local SQLite records:', error);
+        set({ isDbLoaded: true }); // Always clear the loader to prevent white screens!
       }
     },
 
