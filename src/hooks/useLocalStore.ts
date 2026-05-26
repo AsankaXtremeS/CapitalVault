@@ -1557,15 +1557,25 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
       const now = new Date();
       const currentMonthStr = now.toISOString().substring(0, 7); // 'YYYY-MM'
       const currentDay = now.getDate();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+      const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
 
       let hasAppliedAny = false;
 
       for (const t of activeTemplates) {
+        const effectiveDay = Math.min(t.day_of_month, daysInMonth);
         if (
           t.last_applied_month !== currentMonthStr &&
-          currentDay >= t.day_of_month
+          currentDay >= effectiveDay
         ) {
           try {
+            const transactionDate = new Date(
+              currentYear,
+              currentMonth,
+              effectiveDay,
+            ).getTime();
+
             // 1. Generate Transaction
             await get().addTransaction({
               id: `tx-recurring-${Date.now()}-${t.id}`,
@@ -1573,7 +1583,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
               amount: t.amount,
               category: t.category,
               account: t.account,
-              date: Date.now(),
+              date: transactionDate,
               note: `[Recurring] ${t.note || ""}`.trim(),
             });
 
