@@ -1,19 +1,19 @@
-import React from 'react';
-import { Tabs } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import { View, StyleSheet, ActivityIndicator } from 'react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import PINAppLock from '@/components/PINAppLock';
-import FloatingCalculator from '@/components/FloatingCalculator';
-import { useLocalStore } from '@/hooks/useLocalStore';
-import { initializeDatabase } from '@/utils/db';
-import { 
-  BookOpen, 
-  BarChart3, 
-  HandCoins, 
-  Percent,
-  PiggyBank
-} from 'lucide-react-native';
+import FloatingCalculator from "@/components/FloatingCalculator";
+import PINAppLock from "@/components/PINAppLock";
+import { useLocalStore } from "@/hooks/useLocalStore";
+import { initializeDatabase } from "@/utils/db";
+import { Tabs } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import {
+    BarChart3,
+    BookOpen,
+    HandCoins,
+    Percent,
+    PiggyBank,
+} from "lucide-react-native";
+import React from "react";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 export default function RootLayout() {
   const { loadAllData, isDbLoaded, pipeValue } = useLocalStore();
@@ -24,7 +24,7 @@ export default function RootLayout() {
         // 1. Initialize SQLite Database schemas and seeds
         await initializeDatabase();
       } catch (e) {
-        console.error('DB init error (non-fatal):', e);
+        console.error("DB init error (non-fatal):", e);
       }
       // 2. Load SQLite records into Zustand reactive in-memory cache
       await loadAllData();
@@ -44,16 +44,16 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <PINAppLock>
         <StatusBar style="light" />
-        
+
         {/* Main Tab Router shell */}
         <Tabs
           screenOptions={{
             headerShown: false,
-            tabBarActiveTintColor: '#FF453A', // Coral Red active accent
-            tabBarInactiveTintColor: '#8E8E93', // Muted secondary text
+            tabBarActiveTintColor: "#FF453A", // Coral Red active accent
+            tabBarInactiveTintColor: "#8E8E93", // Muted secondary text
             tabBarStyle: {
-              backgroundColor: '#1C1C1E', // Sleek slate container
-              borderTopColor: '#2C2C2E',
+              backgroundColor: "#1C1C1E", // Sleek slate container
+              borderTopColor: "#2C2C2E",
               borderTopWidth: 1.5,
               height: 64,
               paddingBottom: 8,
@@ -61,14 +61,14 @@ export default function RootLayout() {
             },
             tabBarLabelStyle: {
               fontSize: 10,
-              fontWeight: '600',
+              fontWeight: "600",
             },
           }}
         >
           <Tabs.Screen
             name="index"
             options={{
-              title: 'Trans.',
+              title: "Trans.",
               tabBarIcon: ({ color, size }) => (
                 <BookOpen color={color} size={size - 2} />
               ),
@@ -89,7 +89,7 @@ export default function RootLayout() {
           <Tabs.Screen
             name="stats"
             options={{
-              title: 'Stats',
+              title: "Stats",
               tabBarIcon: ({ color, size }) => (
                 <BarChart3 color={color} size={size - 2} />
               ),
@@ -98,7 +98,7 @@ export default function RootLayout() {
           <Tabs.Screen
             name="debts"
             options={{
-              title: 'Debts',
+              title: "Debts",
               tabBarIcon: ({ color, size }) => (
                 <HandCoins color={color} size={size - 2} />
               ),
@@ -107,7 +107,7 @@ export default function RootLayout() {
           <Tabs.Screen
             name="loans"
             options={{
-              title: 'Loans',
+              title: "Loans & Invest",
               tabBarIcon: ({ color, size }) => (
                 <Percent color={color} size={size - 2} />
               ),
@@ -116,7 +116,7 @@ export default function RootLayout() {
           <Tabs.Screen
             name="budget"
             options={{
-              title: 'Budget',
+              title: "Budget",
               tabBarIcon: ({ color, size }) => (
                 <PiggyBank color={color} size={size - 2} />
               ),
@@ -141,8 +141,8 @@ export default function RootLayout() {
 const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#121214', // Deep Charcoal background
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#121214", // Deep Charcoal background
+    justifyContent: "center",
+    alignItems: "center",
   },
 });

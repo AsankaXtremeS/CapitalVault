@@ -1,5 +1,5 @@
-import { Platform } from 'react-native';
-import * as SQLite from 'expo-sqlite';
+import * as SQLite from "expo-sqlite";
+import { Platform } from "react-native";
 
 let databaseInstance: SQLite.SQLiteDatabase | null = null;
 
@@ -7,7 +7,7 @@ let databaseInstance: SQLite.SQLiteDatabase | null = null;
  * Retrieves or opens the SQLite database instance asynchronously.
  */
 export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
-  if (Platform.OS === 'web') {
+  if (Platform.OS === "web") {
     // Return a robust mock database interface to support flawless web previewing
     return {
       execAsync: async () => {},
@@ -18,7 +18,9 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
   }
 
   if (!databaseInstance) {
-    databaseInstance = await SQLite.openDatabaseAsync('offline_money_manager.db');
+    databaseInstance = await SQLite.openDatabaseAsync(
+      "offline_money_manager.db",
+    );
   }
   return databaseInstance;
 }
@@ -31,8 +33,8 @@ export async function initializeDatabase(): Promise<void> {
   const db = await getDatabase();
 
   // Enable WAL mode for better concurrent read/write performance
-  await db.execAsync('PRAGMA journal_mode = WAL;');
-  await db.execAsync('PRAGMA foreign_keys = ON;');
+  await db.execAsync("PRAGMA journal_mode = WAL;");
+  await db.execAsync("PRAGMA foreign_keys = ON;");
 
   // Transactions table
   await db.execAsync(`
@@ -72,6 +74,7 @@ export async function initializeDatabase(): Promise<void> {
     CREATE TABLE IF NOT EXISTS loans_installments (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
+      entry_type TEXT CHECK(entry_type IN ('income', 'expense')) NOT NULL DEFAULT 'expense',
       principal REAL NOT NULL,
       annual_rate REAL NOT NULL,
       tenure_months INTEGER NOT NULL,
@@ -82,6 +85,13 @@ export async function initializeDatabase(): Promise<void> {
       updated_at INTEGER NOT NULL
     );
   `);
+  try {
+    await db.execAsync(
+      `ALTER TABLE loans_installments ADD COLUMN entry_type TEXT CHECK(entry_type IN ('income', 'expense')) NOT NULL DEFAULT 'expense';`,
+    );
+  } catch (e) {
+    // Column already exists or migration not needed.
+  }
 
   // Recurring billing templates table
   await db.execAsync(`

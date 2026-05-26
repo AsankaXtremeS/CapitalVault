@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS public.loans_installments (
     id TEXT PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
+    entry_type TEXT NOT NULL CHECK (entry_type IN ('income', 'expense')) DEFAULT 'expense',
     principal NUMERIC NOT NULL CHECK (principal >= 0),
     annual_rate NUMERIC NOT NULL CHECK (annual_rate >= 0),
     tenure_months INTEGER NOT NULL CHECK (tenure_months > 0),

@@ -40,6 +40,7 @@ export interface Debt {
 export interface Loan {
   id: string;
   name: string;
+  entry_type: "income" | "expense";
   principal: number;
   annual_rate: number;
   tenure_months: number;
@@ -206,9 +207,10 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
     const isCellular = state.type === "cellular";
     set({ isOnline, isCellular });
 
-    // Sync on reconnect
-    if (isOnline) {
-      get().triggerCloudSync();
+    // Sync on reconnect if cloud sync is already available
+    const store = get();
+    if (isOnline && typeof store.triggerCloudSync === "function") {
+      store.triggerCloudSync();
     }
   });
 
@@ -318,6 +320,10 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
         const dbLoans = await db.getAllAsync<Loan>(
           "SELECT * FROM loans_installments WHERE sync_status != 'deleted' ORDER BY start_date DESC",
         );
+        const normalizedLoans = (dbLoans || []).map((loan) => ({
+          ...loan,
+          entry_type: (loan as any).entry_type ?? "expense",
+        }));
 
         // 4. Fetch recurring templates
         const dbTemplates = await db.getAllAsync<RecurringTemplate>(
@@ -330,7 +336,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
         set({
           transactions: dbTxs,
           debts: dbDebts,
-          loans: dbLoans,
+          loans: normalizedLoans,
           recurringTemplates: dbTemplates,
           isDbLoaded: true,
         });
@@ -510,6 +516,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
                     id: loan.id,
                     user_id: userId,
                     name: loan.name,
+                    entry_type: loan.entry_type,
                     principal: loan.principal,
                     annual_rate: loan.annual_rate,
                     tenure_months: loan.tenure_months,
@@ -967,11 +974,12 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
       try {
         const db = await getDatabase();
         await db.runAsync(
-          `INSERT INTO loans_installments (id, name, principal, annual_rate, tenure_months, start_date, monthly_emi, reminders_enabled, sync_status, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO loans_installments (id, name, entry_type, principal, annual_rate, tenure_months, start_date, monthly_emi, reminders_enabled, sync_status, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             newLoan.id,
             newLoan.name,
+            newLoan.entry_type,
             newLoan.principal,
             newLoan.annual_rate,
             newLoan.tenure_months,
@@ -1007,10 +1015,11 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
         const db = await getDatabase();
         await db.runAsync(
           `UPDATE loans_installments 
-           SET name = ?, principal = ?, annual_rate = ?, tenure_months = ?, start_date = ?, monthly_emi = ?, reminders_enabled = ?, sync_status = ?, updated_at = ?
+           SET name = ?, entry_type = ?, principal = ?, annual_rate = ?, tenure_months = ?, start_date = ?, monthly_emi = ?, reminders_enabled = ?, sync_status = ?, updated_at = ?
            WHERE id = ?`,
           [
             updatedLoan.name,
+            updatedLoan.entry_type,
             updatedLoan.principal,
             updatedLoan.annual_rate,
             updatedLoan.tenure_months,
@@ -1293,11 +1302,12 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
 
         for (const l of loans) {
           await db.runAsync(
-            `INSERT OR REPLACE INTO loans_installments (id, name, principal, annual_rate, tenure_months, start_date, monthly_emi, reminders_enabled, sync_status, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)`,
+            `INSERT OR REPLACE INTO loans_installments (id, name, entry_type, principal, annual_rate, tenure_months, start_date, monthly_emi, reminders_enabled, sync_status, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)`,
             [
               l.id,
               l.name,
+              (l as any).entry_type ?? "expense",
               l.principal,
               l.annual_rate,
               l.tenure_months,
