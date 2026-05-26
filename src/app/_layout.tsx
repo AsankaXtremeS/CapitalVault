@@ -8,10 +8,8 @@ import FloatingCalculator from '@/components/FloatingCalculator';
 import { useLocalStore } from '@/hooks/useLocalStore';
 import { initializeDatabase } from '@/utils/db';
 import { 
-  Receipt, 
-  Calendar as CalendarIcon, 
-  Layers, 
-  PieChart, 
+  BookOpen, 
+  BarChart3, 
   HandCoins, 
   Percent 
 } from 'lucide-react-native';
@@ -46,7 +44,7 @@ export default function RootLayout() {
         <Tabs
           screenOptions={{
             headerShown: false,
-            tabBarActiveTintColor: '#AF52DE', // Royal Purple active accent
+            tabBarActiveTintColor: '#FF453A', // Coral Red active accent
             tabBarInactiveTintColor: '#8E8E93', // Muted secondary text
             tabBarStyle: {
               backgroundColor: '#1C1C1E', // Sleek slate container
@@ -65,28 +63,22 @@ export default function RootLayout() {
           <Tabs.Screen
             name="index"
             options={{
-              title: 'Daily',
+              title: 'Trans.',
               tabBarIcon: ({ color, size }) => (
-                <Receipt color={color} size={size - 2} />
+                <BookOpen color={color} size={size - 2} />
               ),
             }}
           />
           <Tabs.Screen
             name="calendar"
             options={{
-              title: 'Calendar',
-              tabBarIcon: ({ color, size }) => (
-                <CalendarIcon color={color} size={size - 2} />
-              ),
+              href: null,
             }}
           />
           <Tabs.Screen
             name="monthly"
             options={{
-              title: 'Monthly',
-              tabBarIcon: ({ color, size }) => (
-                <Layers color={color} size={size - 2} />
-              ),
+              href: null,
             }}
           />
           <Tabs.Screen
@@ -94,7 +86,7 @@ export default function RootLayout() {
             options={{
               title: 'Stats',
               tabBarIcon: ({ color, size }) => (
-                <PieChart color={color} size={size - 2} />
+                <BarChart3 color={color} size={size - 2} />
               ),
             }}
           />

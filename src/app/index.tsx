@@ -24,7 +24,8 @@ import {
   CloudLightning,
   CheckCircle2,
   Trash2,
-  Bookmark
+  Bookmark,
+  Star
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
@@ -132,26 +133,39 @@ export default function DailyLedger() {
     }
   }, [calculatorPipeValue, modalVisible]);
 
-  // Group transactions for display
-  const currentMonthTxs = transactions.filter(tx => {
-    const txDate = new Date(tx.date);
-    return txDate.getMonth() === selectedMonth.getMonth() &&
-           txDate.getFullYear() === selectedMonth.getFullYear();
+  // Sub-Tab Switcher State
+  const [activeSubTab, setActiveSubTab] = useState<'Daily' | 'Calendar' | 'Monthly' | 'Total' | 'Note'>('Daily');
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [expandedMonth, setExpandedMonth] = useState<number | null>(new Date().getMonth());
+
+  // Filter transactions based on active view period
+  const periodTxs = transactions.filter(tx => {
+    const d = new Date(tx.date);
+    if (activeSubTab === 'Monthly' || activeSubTab === 'Total') {
+      return d.getFullYear() === selectedYear;
+    }
+    return d.getMonth() === selectedMonth.getMonth() && d.getFullYear() === selectedMonth.getFullYear();
   });
 
-  const totalIncome = currentMonthTxs
+  const totalIncome = periodTxs
     .filter(tx => tx.type === 'income')
     .reduce((sum, tx) => sum + tx.amount, 0);
 
-  const totalExpenses = currentMonthTxs
+  const totalExpenses = periodTxs
     .filter(tx => tx.type === 'expense')
     .reduce((sum, tx) => sum + tx.amount, 0);
 
   const totalNet = totalIncome - totalExpenses;
 
-  // Group transactions by day
+  // Group only month transactions for the daily ledger list
+  const dailyTxs = transactions.filter(tx => {
+    const txDate = new Date(tx.date);
+    return txDate.getMonth() === selectedMonth.getMonth() &&
+           txDate.getFullYear() === selectedMonth.getFullYear();
+  });
+
   const groupedTxs: Record<string, Transaction[]> = {};
-  currentMonthTxs.forEach(tx => {
+  dailyTxs.forEach(tx => {
     const dateStr = new Date(tx.date).toLocaleDateString('en-US', {
       weekday: 'short',
       year: 'numeric',
@@ -167,7 +181,133 @@ export default function DailyLedger() {
     const newMonth = new Date(selectedMonth);
     newMonth.setMonth(selectedMonth.getMonth() + (direction === 'next' ? 1 : -1));
     setSelectedMonth(newMonth);
+    setSelectedYear(newMonth.getFullYear());
   };
+
+  const handlePrevPeriod = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (activeSubTab === 'Monthly' || activeSubTab === 'Total') {
+      setSelectedYear(prev => prev - 1);
+    } else {
+      const newMonth = new Date(selectedMonth);
+      newMonth.setMonth(selectedMonth.getMonth() - 1);
+      setSelectedMonth(newMonth);
+      setSelectedYear(newMonth.getFullYear());
+    }
+  };
+
+  const handleNextPeriod = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (activeSubTab === 'Monthly' || activeSubTab === 'Total') {
+      setSelectedYear(prev => prev + 1);
+    } else {
+      const newMonth = new Date(selectedMonth);
+      newMonth.setMonth(selectedMonth.getMonth() + 1);
+      setSelectedMonth(newMonth);
+      setSelectedYear(newMonth.getFullYear());
+    }
+  };
+
+  // Calendar cells setup
+  const year = selectedMonth.getFullYear();
+  const month = selectedMonth.getMonth();
+  const firstDayIndex = new Date(year, month, 1).getDay(); // 0 = Sunday, 1 = Monday ...
+  const totalDays = new Date(year, month + 1, 0).getDate();
+
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < firstDayIndex; i++) cells.push(null);
+  for (let day = 1; day <= totalDays; day++) cells.push(day);
+
+  const calendarRows: (number | null)[][] = [];
+  let currentCalRow: (number | null)[] = [];
+  
+  cells.forEach((cell, idx) => {
+    currentCalRow.push(cell);
+    if (currentCalRow.length === 7 || idx === cells.length - 1) {
+      while (currentCalRow.length < 7) currentCalRow.push(null);
+      calendarRows.push(currentCalRow);
+      currentCalRow = [];
+    }
+  });
+
+  const getDailyStatsForCalendar = (dayNum: number) => {
+    const dayTxs = dailyTxs.filter(tx => new Date(tx.date).getDate() === dayNum);
+    const income = dayTxs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const expense = dayTxs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const net = income - expense;
+    return { income, expense, net };
+  };
+
+  // Annual view weekly breakdown helpers
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  const getWeeklyStatsForMonth = (monthIndex: number) => {
+    const yearTxs = transactions.filter(tx => new Date(tx.date).getFullYear() === selectedYear);
+    const monthTxs = yearTxs.filter(tx => new Date(tx.date).getMonth() === monthIndex);
+    const totalDaysInMonth = new Date(selectedYear, monthIndex + 1, 0).getDate();
+    
+    const weekIntervals = [
+      { start: 1, end: 7 },
+      { start: 8, end: 14 },
+      { start: 15, end: 21 },
+      { start: 22, end: 28 },
+      { start: 29, end: totalDaysInMonth }
+    ].filter(w => w.start <= totalDaysInMonth);
+
+    const weeks: Array<{ rangeStr: string; income: number; expense: number; net: number; isActive: boolean }> = [];
+
+    weekIntervals.reverse().forEach((week) => {
+      const weekTxs = monthTxs.filter(tx => {
+        const day = new Date(tx.date).getDate();
+        return day >= week.start && day <= week.end;
+      });
+
+      const income = weekTxs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+      const expense = weekTxs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+      const net = income - expense;
+      const formatNum = (num: number) => num.toString().padStart(2, '0');
+      const rangeStr = `${formatNum(monthIndex + 1)}.${formatNum(week.start)} ~ ${formatNum(monthIndex + 1)}.${formatNum(week.end)}`;
+      
+      const today = new Date();
+      const isActive = today.getFullYear() === selectedYear && today.getMonth() === monthIndex && today.getDate() >= week.start && today.getDate() <= week.end;
+
+      weeks.push({ rangeStr, income, expense, net, isActive });
+    });
+
+    return weeks;
+  };
+
+  const getMonthStats = (monthIndex: number) => {
+    const yearTxs = transactions.filter(tx => new Date(tx.date).getFullYear() === selectedYear);
+    const monthTxs = yearTxs.filter(tx => new Date(tx.date).getMonth() === monthIndex);
+    const income = monthTxs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const expense = monthTxs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const net = income - expense;
+    return { income, expense, net };
+  };
+
+  // Category totals selector helper
+  const getCategoryTotalsList = () => {
+    const map: Record<string, { income: number; expense: number }> = {};
+    periodTxs.forEach(tx => {
+      if (!map[tx.category]) map[tx.category] = { income: 0, expense: 0 };
+      if (tx.type === 'income') map[tx.category].income += tx.amount;
+      else map[tx.category].expense += tx.amount;
+    });
+    return Object.keys(map).map(catName => {
+      const inc = map[catName].income;
+      const exp = map[catName].expense;
+      return {
+        name: catName,
+        income: inc,
+        expense: exp,
+        net: inc - exp,
+      };
+    }).sort((a, b) => Math.abs(b.net) - Math.abs(a.net));
+  };
+
+  // Notes extractor helper
+  const notesTxs = periodTxs.filter(tx => tx.note && tx.note.trim() !== '');
 
   const handlePickBill = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -245,163 +385,404 @@ export default function DailyLedger() {
 
   return (
     <View style={styles.container}>
-      {/* Header Controls */}
-      <View style={styles.header}>
-        <View style={styles.monthSelector}>
-          <TouchableOpacity onPress={() => handleMonthChange('prev')}>
-            <ChevronLeft color="#8E8E93" size={24} />
+      {/* Top Period Header Row switcher */}
+      <View style={styles.topPeriodHeader}>
+        <View style={styles.periodSelector}>
+          <TouchableOpacity onPress={handlePrevPeriod} style={styles.chevronBtn}>
+            <ChevronLeft color="#FFFFFF" size={22} />
           </TouchableOpacity>
-          <Text style={styles.monthText}>
-            {selectedMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+          <Text style={styles.periodText}>
+            {activeSubTab === 'Monthly' || activeSubTab === 'Total'
+              ? `${selectedYear}`
+              : selectedMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+            }
           </Text>
-          <TouchableOpacity onPress={() => handleMonthChange('next')}>
-            <ChevronRight color="#8E8E93" size={24} />
+          <TouchableOpacity onPress={handleNextPeriod} style={styles.chevronBtn}>
+            <ChevronRight color="#FFFFFF" size={22} />
           </TouchableOpacity>
         </View>
-
-        <View style={styles.headerActions}>
-          {/* Cloud Sync Indicator */}
-          <TouchableOpacity 
-            onPress={() => isOnline && triggerCloudSync()} 
-            style={[styles.syncIcon, !isOnline && styles.offlineIcon]}
-          >
-            {isSyncing ? (
-              <Text style={styles.syncingLabel}>Syncing...</Text>
-            ) : isOnline ? (
-              <CheckCircle2 color="#0A84FF" size={20} />
-            ) : (
-              <CloudLightning color="#FF453A" size={20} />
-            )}
+        <View style={styles.headerIcons}>
+          <TouchableOpacity style={styles.headerIconBtn}>
+            <Star color="#8E8E93" size={20} />
           </TouchableOpacity>
-          <SlidersHorizontal color="#FFFFFF" size={20} style={styles.actionIcon} />
+          <TouchableOpacity style={styles.headerIconBtn}>
+            <Search color="#8E8E93" size={20} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerIconBtn}>
+            <SlidersHorizontal color="#8E8E93" size={20} />
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* Summary Cards */}
-      <View style={styles.summaryContainer}>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Income</Text>
-          <Text style={[styles.summaryVal, styles.incomeText]}>
-            ${totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+      {/* Sub-Tab Selector bar */}
+      <View style={styles.subTabRow}>
+        {(['Daily', 'Calendar', 'Monthly', 'Total', 'Note'] as const).map(tab => {
+          const isActive = activeSubTab === tab;
+          return (
+            <TouchableOpacity 
+              key={tab}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setActiveSubTab(tab);
+              }}
+              style={[styles.subTabItem, isActive && styles.subTabItemActive]}
+            >
+              <Text style={[styles.subTabText, isActive && styles.subTabTextActive]}>
+                {tab}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* Summary totals row precisely matching screenshot columns */}
+      <View style={styles.totalsSummaryRow}>
+        <View style={styles.totalsColumn}>
+          <Text style={styles.totalsLabel}>Income</Text>
+          <Text style={[styles.totalsValue, styles.blueText]}>
+            {totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </Text>
         </View>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Expenses</Text>
-          <Text style={[styles.summaryVal, styles.expenseText]}>
-            ${totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+        <View style={styles.totalsColumn}>
+          <Text style={styles.totalsLabel}>Expenses</Text>
+          <Text style={[styles.totalsValue, styles.redText]}>
+            {totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </Text>
         </View>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Total Net</Text>
-          <Text style={[styles.summaryVal, totalNet >= 0 ? styles.incomeText : styles.expenseText]}>
-            ${totalNet.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+        <View style={styles.totalsColumn}>
+          <Text style={styles.totalsLabel}>Total</Text>
+          <Text style={[styles.totalsValue, styles.whiteText]}>
+            {totalNet.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </Text>
         </View>
       </View>
 
-      {/* Transaction List */}
-      <ScrollView contentContainerStyle={styles.listContent}>
-        {Object.keys(groupedTxs).length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No transactions logged for this month.</Text>
-            <Text style={styles.emptySubText}>Tap the "+" button below to log offline files.</Text>
-          </View>
-        ) : (
-          Object.keys(groupedTxs).map(dayKey => {
-            const dayTxs = groupedTxs[dayKey];
-            const dayDate = new Date(dayTxs[0].date);
-            
-            // Calculate daily statistics
-            const dayIncome = dayTxs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-            const dayExpense = dayTxs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+      {/* Sub-tab Page content dynamically switched */}
+      {activeSubTab === 'Daily' && (
+        <ScrollView contentContainerStyle={styles.listContent}>
+          {Object.keys(groupedTxs).length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No transactions logged for this month.</Text>
+              <Text style={styles.emptySubText}>Tap the "+" button below to log offline files.</Text>
+            </View>
+          ) : (
+            Object.keys(groupedTxs).map(dayKey => {
+              const dayTxs = groupedTxs[dayKey];
+              const dayDate = new Date(dayTxs[0].date);
+              
+              const dayIncome = dayTxs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+              const dayExpense = dayTxs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
 
-            return (
-              <View key={dayKey} style={styles.dayGroup}>
-                {/* Day Header row */}
-                <View style={styles.dayHeader}>
-                  <View style={styles.dayHeaderDate}>
-                    <Text style={styles.dayNum}>{dayDate.getDate()}</Text>
-                    <View style={[
-                      styles.dayNameBadge,
-                      { backgroundColor: getDayBadgeStyle(dayDate).bg }
-                    ]}>
-                      <Text style={[
-                        styles.dayNameText,
-                        { color: getDayBadgeStyle(dayDate).color }
-                      ]}>
-                        {dayDate.toLocaleDateString('en-US', { weekday: 'short' })}
+              return (
+                <View key={dayKey} style={styles.dayGroup}>
+                  <View style={styles.dayHeader}>
+                    <View style={styles.dayHeaderDate}>
+                      <Text style={styles.dayNum}>{dayDate.getDate()}</Text>
+                      <View style={[styles.dayNameBadge, { backgroundColor: getDayBadgeStyle(dayDate).bg }]}>
+                        <Text style={[styles.dayNameText, { color: getDayBadgeStyle(dayDate).color }]}>
+                          {dayDate.toLocaleDateString('en-US', { weekday: 'short' })}
+                        </Text>
+                      </View>
+                      <Text style={styles.dayYearText}>
+                        {`${(dayDate.getMonth() + 1).toString().padStart(2, '0')}.${dayDate.getFullYear()}`}
                       </Text>
                     </View>
-                    <Text style={styles.dayYearText}>
-                      {`${(dayDate.getMonth() + 1).toString().padStart(2, '0')}.${dayDate.getFullYear()}`}
+                    <View style={styles.dayTotals}>
+                      <Text style={styles.dayIncomeVal}>
+                        ${dayIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </Text>
+                      <Text style={styles.dayExpenseVal}>
+                        ${dayExpense.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {dayTxs.map(tx => (
+                    <View key={tx.id} style={styles.txRow}>
+                      <View style={styles.txCategoryContainer}>
+                        <Text style={styles.txCategoryText}>
+                          {getCategoryEmoji(tx.category)} {tx.category}
+                        </Text>
+                      </View>
+
+                      <View style={styles.txMiddleContainer}>
+                        {tx.note ? (
+                          <View>
+                            <Text style={styles.txNoteText}>{tx.note}</Text>
+                            <Text style={styles.txAccountBelowNote}>{tx.account}</Text>
+                          </View>
+                        ) : (
+                          <Text style={styles.txAccountOnly}>{tx.account}</Text>
+                        )}
+                        {tx.bill_path && (
+                          <Text style={styles.attachmentLabel}>📎 Bill Attached</Text>
+                        )}
+                      </View>
+
+                      <View style={styles.txRightContainer}>
+                        <Text style={[styles.txAmountText, tx.type === 'income' ? styles.incomeText : styles.expenseText]}>
+                          ${tx.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </Text>
+                        <TouchableOpacity 
+                          style={styles.deleteBtn} 
+                          onPress={() => {
+                            Alert.alert(
+                              'Delete Transaction',
+                              'Are you sure you want to remove this ledger entry?',
+                              [
+                                { text: 'Cancel', style: 'cancel' },
+                                { text: 'Delete', style: 'destructive', onPress: () => deleteTransaction(tx.id) }
+                              ]
+                            );
+                          }}
+                        >
+                          <Trash2 color="#8E8E93" size={14} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              );
+            })
+          )}
+        </ScrollView>
+      )}
+
+      {activeSubTab === 'Calendar' && (
+        <View style={styles.calendarSubViewContainer}>
+          {/* Days of the Week labels */}
+          <View style={styles.weekLabelsRow}>
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => (
+              <Text 
+                key={day} 
+                style={[
+                  styles.weekLabel, 
+                  idx === 0 && styles.sundayLabel, 
+                  idx === 6 && styles.saturdayLabel
+                ]}
+              >
+                {day}
+              </Text>
+            ))}
+          </View>
+
+          {/* Calendar Grid Container */}
+          <ScrollView contentContainerStyle={styles.gridContainer}>
+            {calendarRows.map((row, rowIndex) => (
+              <View key={rowIndex} style={styles.gridRow}>
+                {row.map((dayNum, cellIndex) => {
+                  if (dayNum === null) {
+                    return <View key={cellIndex} style={styles.gridCellEmpty} />;
+                  }
+
+                  const { income, expense, net } = getDailyStatsForCalendar(dayNum);
+                  const isToday = 
+                    dayNum === new Date().getDate() && 
+                    month === new Date().getMonth() && 
+                    year === new Date().getFullYear();
+
+                  return (
+                    <View 
+                      key={cellIndex} 
+                      style={[
+                        styles.gridCell,
+                        isToday && styles.todayCell
+                      ]}
+                    >
+                      <Text 
+                        style={[
+                          styles.dayNumber,
+                          cellIndex === 0 && styles.sundayText,
+                          cellIndex === 6 && styles.saturdayText,
+                          isToday && styles.todayText
+                        ]}
+                      >
+                        {dayNum}
+                      </Text>
+
+                      {income > 0 && (
+                        <Text numberOfLines={1} style={styles.cellIncome}>
+                          +${Math.round(income)}
+                        </Text>
+                      )}
+
+                      {expense > 0 && (
+                        <Text numberOfLines={1} style={styles.cellExpense}>
+                          -${Math.round(expense)}
+                        </Text>
+                      )}
+
+                      {(income > 0 || expense > 0) && (
+                        <Text numberOfLines={1} style={styles.cellNet}>
+                          {net >= 0 ? '+' : ''}${Math.round(net)}
+                        </Text>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
+      {activeSubTab === 'Monthly' && (
+        <ScrollView contentContainerStyle={styles.listContent}>
+          {monthNames.map((name, index) => {
+            const { income, expense, net } = getMonthStats(index);
+            const isExpanded = expandedMonth === index;
+            const weeklyBreakdown = isExpanded ? getWeeklyStatsForMonth(index) : [];
+
+            if (index > new Date().getMonth() && income === 0 && expense === 0) {
+              return null;
+            }
+
+            return (
+              <View key={name} style={styles.monthGroup}>
+                <TouchableOpacity 
+                  activeOpacity={0.85}
+                  style={[styles.monthHeader, isExpanded && styles.monthHeaderExpanded]} 
+                  onPress={() => setExpandedMonth(isExpanded ? null : index)}
+                >
+                  <View>
+                    <Text style={styles.monthNameText}>{name}</Text>
+                    <Text style={styles.monthDateRangeText}>{`${index + 1}.1 ~ ${index + 1}.${new Date(selectedYear, index + 1, 0).getDate()}`}</Text>
+                  </View>
+
+                  <View style={styles.monthFigures}>
+                    <Text style={[styles.figureText, styles.incomeText]}>
+                      ${income.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </Text>
+                    <Text style={[styles.figureText, styles.expenseText]}>
+                      ${expense.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </Text>
+                    <Text style={styles.netText}>
+                      ${net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </Text>
                   </View>
-                  <View style={styles.dayTotals}>
-                    <Text style={styles.dayIncomeVal}>
-                      ${dayIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </TouchableOpacity>
+
+                {isExpanded && (
+                  <View style={styles.weekContainer}>
+                    {weeklyBreakdown.map((week, idx) => (
+                      <View 
+                        key={idx} 
+                        style={[
+                          styles.weekRow,
+                          week.isActive && styles.weekRowActive
+                        ]}
+                      >
+                        <Text style={styles.weekRange}>{week.rangeStr}</Text>
+                        <View style={styles.weekFigures}>
+                          <Text style={[styles.weekFigureVal, styles.incomeText]}>
+                            ${week.income.toLocaleString()}
+                          </Text>
+                          <Text style={[styles.weekFigureVal, styles.expenseText]}>
+                            ${week.expense.toLocaleString()}
+                          </Text>
+                          <Text style={styles.weekNetVal}>
+                            ${week.net.toLocaleString()}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            );
+          })}
+        </ScrollView>
+      )}
+
+      {activeSubTab === 'Total' && (
+        <ScrollView contentContainerStyle={styles.listContent}>
+          {getCategoryTotalsList().length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No category breakdowns logged for this period.</Text>
+            </View>
+          ) : (
+            getCategoryTotalsList().map(item => (
+              <View key={item.name} style={styles.categoryTotalsCard}>
+                <View style={styles.categoryTotalsMeta}>
+                  <Text style={styles.categoryTotalsTitle}>
+                    {getCategoryEmoji(item.name)} {item.name}
+                  </Text>
+                  <Text style={[styles.categoryTotalsAmount, item.net >= 0 ? styles.incomeText : styles.expenseText]}>
+                    ${item.net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                </View>
+                <View style={styles.categoryTotalsProgressContainer}>
+                  <View style={styles.categoryTotalsProgressLabelRow}>
+                    <Text style={styles.categoryTotalsProgressText}>
+                      In: <Text style={styles.incomeText}>${item.income.toLocaleString()}</Text>
                     </Text>
-                    <Text style={styles.dayExpenseVal}>
-                      ${dayExpense.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <Text style={styles.categoryTotalsProgressText}>
+                      Out: <Text style={styles.expenseText}>${item.expense.toLocaleString()}</Text>
                     </Text>
                   </View>
                 </View>
-
-                {/* Day Transactions */}
-                {dayTxs.map(tx => (
-                  <View key={tx.id} style={styles.txRow}>
-                    {/* Left: Category + Emoji */}
-                    <View style={styles.txCategoryContainer}>
-                      <Text style={styles.txCategoryText}>
-                        {getCategoryEmoji(tx.category)} {tx.category}
-                      </Text>
-                    </View>
-
-                    {/* Middle: Note & Account details */}
-                    <View style={styles.txMiddleContainer}>
-                      {tx.note ? (
-                        <View>
-                          <Text style={styles.txNoteText}>{tx.note}</Text>
-                          <Text style={styles.txAccountBelowNote}>{tx.account}</Text>
-                        </View>
-                      ) : (
-                        <Text style={styles.txAccountOnly}>{tx.account}</Text>
-                      )}
-                      {tx.bill_path && (
-                        <Text style={styles.attachmentLabel}>📎 Bill Attached</Text>
-                      )}
-                    </View>
-
-                    {/* Right: Amount & Delete button */}
-                    <View style={styles.txRightContainer}>
-                      <Text style={[
-                        styles.txAmountText,
-                        tx.type === 'income' ? styles.incomeText : styles.expenseText
-                      ]}>
-                        ${tx.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </Text>
-                      <TouchableOpacity 
-                        style={styles.deleteBtn} 
-                        onPress={() => {
-                          Alert.alert(
-                            'Delete Transaction',
-                            'Are you sure you want to remove this ledger entry?',
-                            [
-                              { text: 'Cancel', style: 'cancel' },
-                              { text: 'Delete', style: 'destructive', onPress: () => deleteTransaction(tx.id) }
-                            ]
-                          );
-                        }}
-                      >
-                        <Trash2 color="#8E8E93" size={14} />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))}
               </View>
-            );
-          })
-        )}
-      </ScrollView>
+            ))
+          )}
+        </ScrollView>
+      )}
+
+      {activeSubTab === 'Note' && (
+        <ScrollView contentContainerStyle={styles.listContent}>
+          {notesTxs.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No annotated transactions logged for this period.</Text>
+            </View>
+          ) : (
+            notesTxs.map(tx => {
+              const dayDate = new Date(tx.date);
+              return (
+                <View key={tx.id} style={styles.txRow}>
+                  <View style={styles.txCategoryContainer}>
+                    <Text style={styles.txCategoryText}>
+                      {getCategoryEmoji(tx.category)} {tx.category}
+                    </Text>
+                    <Text style={styles.noteDateTag}>
+                      {`${dayDate.getMonth() + 1}.${dayDate.getDate()}`}
+                    </Text>
+                  </View>
+
+                  <View style={styles.txMiddleContainer}>
+                    <View>
+                      <Text style={styles.txNoteText}>{tx.note}</Text>
+                      <Text style={styles.txAccountBelowNote}>{tx.account}</Text>
+                    </View>
+                    {tx.bill_path && (
+                      <Text style={styles.attachmentLabel}>📎 Bill Attached</Text>
+                    )}
+                  </View>
+
+                  <View style={styles.txRightContainer}>
+                    <Text style={[styles.txAmountText, tx.type === 'income' ? styles.incomeText : styles.expenseText]}>
+                      ${tx.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </Text>
+                    <TouchableOpacity 
+                      style={styles.deleteBtn} 
+                      onPress={() => {
+                        Alert.alert(
+                          'Delete Transaction',
+                          'Are you sure you want to remove this ledger entry?',
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Delete', style: 'destructive', onPress: () => deleteTransaction(tx.id) }
+                          ]
+                        );
+                      }}
+                    >
+                      <Trash2 color="#8E8E93" size={14} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })
+          )}
+        </ScrollView>
+      )}
 
       {/* Red FAB Plus Trigger */}
       <TouchableOpacity 
@@ -1150,6 +1531,292 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
+  },
+  topPeriodHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  periodSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  chevronBtn: {
+    padding: 6,
+  },
+  periodText: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '700',
+    marginHorizontal: 12,
+  },
+  headerIcons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerIconBtn: {
+    padding: 6,
+    marginLeft: 10,
+  },
+  subTabRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1.5,
+    borderBottomColor: '#2C2C2E',
+    marginBottom: 14,
+  },
+  subTabItem: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  subTabItemActive: {
+    borderBottomWidth: 3,
+    borderBottomColor: '#FF453A',
+  },
+  subTabText: {
+    fontSize: 14,
+    color: '#8E8E93',
+    fontWeight: '600',
+  },
+  subTabTextActive: {
+    color: '#FFFFFF',
+  },
+  totalsSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  totalsColumn: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  totalsLabel: {
+    color: '#8E8E93',
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  totalsValue: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  blueText: {
+    color: '#0A84FF',
+  },
+  redText: {
+    color: '#FF453A',
+  },
+  whiteText: {
+    color: '#FFFFFF',
+  },
+
+  // Calendar Sub-View styles
+  calendarSubViewContainer: {
+    flex: 1,
+  },
+  weekLabelsRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#2C2C2E',
+    paddingBottom: 8,
+    marginBottom: 4,
+  },
+  weekLabel: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#8E8E93',
+  },
+  sundayLabel: {
+    color: '#FF453A',
+  },
+  saturdayLabel: {
+    color: '#0A84FF',
+  },
+  gridContainer: {
+    paddingHorizontal: 6,
+    paddingBottom: 24,
+  },
+  gridRow: {
+    flexDirection: 'row',
+    height: (SCREEN_WIDTH - 12) / 7 + 18,
+  },
+  gridCell: {
+    flex: 1,
+    borderColor: '#1D1D20',
+    borderWidth: 0.5,
+    padding: 4,
+    justifyContent: 'space-between',
+    margin: 1,
+    backgroundColor: '#161618',
+    borderRadius: 4,
+  },
+  gridCellEmpty: {
+    flex: 1,
+    margin: 1,
+  },
+  todayCell: {
+    borderColor: '#FFFFFF',
+    borderWidth: 1.5,
+  },
+  dayNumber: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  sundayText: {
+    color: '#FF453A',
+  },
+  saturdayText: {
+    color: '#0A84FF',
+  },
+  todayText: {
+    fontWeight: '800',
+  },
+  cellIncome: {
+    color: '#0A84FF',
+    fontSize: 8,
+    fontWeight: '600',
+    textAlign: 'right',
+  },
+  cellExpense: {
+    color: '#FF453A',
+    fontSize: 8,
+    fontWeight: '600',
+    textAlign: 'right',
+  },
+  cellNet: {
+    color: '#8E8E93',
+    fontSize: 8,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+
+  // Monthly View extra styles
+  monthGroup: {
+    marginBottom: 12,
+    backgroundColor: '#1C1C1E',
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#2C2C2E',
+  },
+  monthHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+  },
+  monthHeaderExpanded: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#2C2C2E',
+  },
+  monthNameText: {
+    fontSize: 18,
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  monthDateRangeText: {
+    fontSize: 10,
+    color: '#8E8E93',
+    marginTop: 2,
+  },
+  monthFigures: {
+    alignItems: 'flex-end',
+  },
+  figureText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  netText: {
+    fontSize: 11,
+    color: '#8E8E93',
+    fontWeight: '700',
+  },
+  weekContainer: {
+    backgroundColor: '#121214',
+    paddingVertical: 4,
+  },
+  weekRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#1C1C1E',
+  },
+  weekRowActive: {
+    backgroundColor: '#3A2022',
+  },
+  weekRange: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  weekFigures: {
+    alignItems: 'flex-end',
+  },
+  weekFigureVal: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  weekNetVal: {
+    fontSize: 10,
+    color: '#8E8E93',
+    fontWeight: '700',
+  },
+
+  // Category Totals view styles
+  categoryTotalsCard: {
+    backgroundColor: '#1C1C1E',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#2C2C2E',
+  },
+  categoryTotalsMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  categoryTotalsTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  categoryTotalsAmount: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  categoryTotalsProgressContainer: {
+    marginTop: 4,
+  },
+  categoryTotalsProgressLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  categoryTotalsProgressText: {
+    color: '#8E8E93',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+
+  // Note tab styles
+  noteDateTag: {
+    color: '#8E8E93',
+    fontSize: 10,
+    fontWeight: '500',
+    marginTop: 4,
   },
   catModalBackdrop: {
     flex: 1,
