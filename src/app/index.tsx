@@ -297,36 +297,46 @@ export default function DailyLedger() {
     }
   }, [calculatorPipeValue, modalVisible]);
 
-  // Sub-Tab Switcher State
-  const [activeSubTab, setActiveSubTab] = useState<'Daily' | 'Calendar' | 'Monthly' | 'Total' | 'Note'>('Daily');
+  // Segmented Controller Switcher State
+  const [activeSegment, setActiveSegment] = useState<'Ledger' | 'Calendar' | 'Analytics'>('Ledger');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [expandedMonth, setExpandedMonth] = useState<number | null>(new Date().getMonth());
 
-  // Filter transactions based on active view period
+  // Search Toggle and Query State
+  const [isSearchActive, setIsSearchActive] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Core transaction filtering for the selected month
   const periodTxs = transactions.filter(tx => {
     const d = new Date(tx.date);
-    if (activeSubTab === 'Monthly' || activeSubTab === 'Total') {
-      return d.getFullYear() === selectedYear;
-    }
     return d.getMonth() === selectedMonth.getMonth() && d.getFullYear() === selectedMonth.getFullYear();
   });
 
-  const totalIncome = periodTxs
+  // Dynamic real-time search filtration
+  const filteredTxs = periodTxs.filter(tx => {
+    if (!isSearchActive || !searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase().trim();
+    return (
+      tx.category.toLowerCase().includes(query) ||
+      tx.account.toLowerCase().includes(query) ||
+      (tx.note || '').toLowerCase().includes(query) ||
+      (tx.description || '').toLowerCase().includes(query) ||
+      tx.amount.toString().includes(query)
+    );
+  });
+
+  const totalIncome = filteredTxs
     .filter(tx => tx.type === 'income')
     .reduce((sum, tx) => sum + tx.amount, 0);
 
-  const totalExpenses = periodTxs
+  const totalExpenses = filteredTxs
     .filter(tx => tx.type === 'expense')
     .reduce((sum, tx) => sum + tx.amount, 0);
 
   const totalNet = totalIncome - totalExpenses;
 
-  // Group only month transactions for the daily ledger list
-  const dailyTxs = transactions.filter(tx => {
-    const txDate = new Date(tx.date);
-    return txDate.getMonth() === selectedMonth.getMonth() &&
-           txDate.getFullYear() === selectedMonth.getFullYear();
-  });
+  // Group filtered transactions for the daily ledger list
+  const dailyTxs = filteredTxs;
 
   const groupedTxs: Record<string, Transaction[]> = {};
   dailyTxs.forEach(tx => {
@@ -350,26 +360,18 @@ export default function DailyLedger() {
 
   const handlePrevPeriod = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (activeSubTab === 'Monthly' || activeSubTab === 'Total') {
-      setSelectedYear(prev => prev - 1);
-    } else {
-      const newMonth = new Date(selectedMonth);
-      newMonth.setMonth(selectedMonth.getMonth() - 1);
-      setSelectedMonth(newMonth);
-      setSelectedYear(newMonth.getFullYear());
-    }
+    const newMonth = new Date(selectedMonth);
+    newMonth.setMonth(selectedMonth.getMonth() - 1);
+    setSelectedMonth(newMonth);
+    setSelectedYear(newMonth.getFullYear());
   };
 
   const handleNextPeriod = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (activeSubTab === 'Monthly' || activeSubTab === 'Total') {
-      setSelectedYear(prev => prev + 1);
-    } else {
-      const newMonth = new Date(selectedMonth);
-      newMonth.setMonth(selectedMonth.getMonth() + 1);
-      setSelectedMonth(newMonth);
-      setSelectedYear(newMonth.getFullYear());
-    }
+    const newMonth = new Date(selectedMonth);
+    newMonth.setMonth(selectedMonth.getMonth() + 1);
+    setSelectedMonth(newMonth);
+    setSelectedYear(newMonth.getFullYear());
   };
 
   // Calendar cells setup
@@ -606,18 +608,16 @@ export default function DailyLedger() {
       <View style={styles.topPeriodHeader}>
         <View style={styles.periodSelector}>
           <TouchableOpacity onPress={handlePrevPeriod} style={styles.chevronBtn}>
-            <ChevronLeft color="#FFFFFF" size={22} />
+            <ChevronLeft color="#FFFFFF" size={20} />
           </TouchableOpacity>
           <Text style={styles.periodText}>
-            {activeSubTab === 'Monthly' || activeSubTab === 'Total'
-              ? `${selectedYear}`
-              : selectedMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-            }
+            {selectedMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
           </Text>
           <TouchableOpacity onPress={handleNextPeriod} style={styles.chevronBtn}>
-            <ChevronRight color="#FFFFFF" size={22} />
+            <ChevronRight color="#FFFFFF" size={20} />
           </TouchableOpacity>
         </View>
+        
         <View style={styles.headerIcons}>
           {/* Cloud Sync Status Indicator & Dashboard trigger */}
           <TouchableOpacity 
@@ -635,70 +635,138 @@ export default function DailyLedger() {
             />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.headerIconBtn}>
-            <Star color="#8E8E93" size={20} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.headerIconBtn}>
-            <Search color="#8E8E93" size={20} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.headerIconBtn}>
-            <SlidersHorizontal color="#8E8E93" size={20} />
+          {/* Dynamic Search Toggle Button */}
+          <TouchableOpacity 
+            style={styles.headerIconBtn}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setIsSearchActive(!isSearchActive);
+              if (isSearchActive) setSearchQuery('');
+            }}
+          >
+            <Search color={isSearchActive ? '#0A84FF' : '#8E8E93'} size={20} />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Sub-Tab Selector bar */}
-      <View style={styles.subTabRow}>
-        {(['Daily', 'Calendar', 'Monthly', 'Total', 'Note'] as const).map(tab => {
-          const isActive = activeSubTab === tab;
+      {/* Dynamic Search Bar Input */}
+      {isSearchActive && (
+        <View style={styles.searchBarContainer}>
+          <Search color="#8E8E93" size={16} style={styles.searchBarIcon} />
+          <TextInput
+            placeholder="Search notes, categories, accounts..."
+            placeholderTextColor="#8E8E93"
+            style={styles.searchTextInput}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoFocus={true}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Text style={styles.searchClearText}>Clear</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      {/* Mesh-Gradient Balance Card */}
+      <View style={styles.balanceCardWrapper}>
+        <View style={styles.balanceCard}>
+          <Text style={styles.balanceCardTitle}>Active Balance</Text>
+          <Text style={styles.balanceCardAmount}>
+            ${totalNet.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </Text>
+          
+          <View style={styles.balanceCardRow}>
+            <View style={styles.balanceCardHalf}>
+              <Text style={styles.balanceCardSubLabel}>Income</Text>
+              <Text style={[styles.balanceCardValueText, styles.lightBlueText]}>
+                +${totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </Text>
+            </View>
+            <View style={styles.balanceCardSeparator} />
+            <View style={styles.balanceCardHalf}>
+              <Text style={styles.balanceCardSubLabel}>Expenses</Text>
+              <Text style={[styles.balanceCardValueText, styles.lightRedText]}>
+                -${totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </Text>
+            </View>
+          </View>
+        </View>
+      </View>
+
+      {/* Segmented Switcher Control */}
+      <View style={styles.segmentedControlRow}>
+        {(['Ledger', 'Calendar', 'Analytics'] as const).map(segment => {
+          const isActive = activeSegment === segment;
           return (
             <TouchableOpacity 
-              key={tab}
+              key={segment}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setActiveSubTab(tab);
+                setActiveSegment(segment);
               }}
-              style={[styles.subTabItem, isActive && styles.subTabItemActive]}
+              style={[styles.segmentedItem, isActive && styles.segmentedItemActive]}
             >
-              <Text style={[styles.subTabText, isActive && styles.subTabTextActive]}>
-                {tab}
+              <Text style={[styles.segmentedText, isActive && styles.segmentedTextActive]}>
+                {segment}
               </Text>
             </TouchableOpacity>
           );
         })}
       </View>
 
-      {/* Summary totals row precisely matching screenshot columns */}
-      <View style={styles.totalsSummaryRow}>
-        <View style={styles.totalsColumn}>
-          <Text style={styles.totalsLabel}>Income</Text>
-          <Text style={[styles.totalsValue, styles.blueText]}>
-            {totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </Text>
-        </View>
-        <View style={styles.totalsColumn}>
-          <Text style={styles.totalsLabel}>Expenses</Text>
-          <Text style={[styles.totalsValue, styles.redText]}>
-            {totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </Text>
-        </View>
-        <View style={styles.totalsColumn}>
-          <Text style={styles.totalsLabel}>Total</Text>
-          <Text style={[styles.totalsValue, styles.whiteText]}>
-            {totalNet.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </Text>
-        </View>
-      </View>
-
-      {/* Sub-tab Page content dynamically switched */}
-      {activeSubTab === 'Daily' && (
+      {/* Segmented Page Content dynamically switched */}
+      {activeSegment === 'Ledger' && (
         <ScrollView contentContainerStyle={styles.listContent}>
-          {Object.keys(groupedTxs).length === 0 ? (
+          {isSearchActive && filteredTxs.length === 0 && (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No matching transactions found.</Text>
+            </View>
+          )}
+
+          {!isSearchActive && Object.keys(groupedTxs).length === 0 && (
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>No transactions logged for this month.</Text>
-              <Text style={styles.emptySubText}>Tap the "+" button below to log offline files.</Text>
+              <Text style={styles.emptySubText}>Tap the "+" button below to log ledger entries.</Text>
             </View>
+          )}
+
+          {isSearchActive ? (
+            // Flat search list
+            filteredTxs.map(tx => (
+              <TouchableOpacity 
+                key={tx.id}
+                style={styles.txRow} 
+                activeOpacity={0.7}
+                onPress={() => handleEditTransaction(tx)}
+              >
+                <View style={styles.txCategoryContainer}>
+                  <Text style={styles.txCategoryText}>
+                    {getCategoryEmoji(tx.category)} {tx.category}
+                  </Text>
+                </View>
+
+                <View style={styles.txMiddleContainer}>
+                  {tx.note ? (
+                    <View>
+                      <Text style={styles.txNoteText}>{tx.note}</Text>
+                      <Text style={styles.txAccountBelowNote}>{tx.account} • {new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.txAccountOnly}>{tx.account} • {new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</Text>
+                  )}
+                </View>
+
+                <View style={styles.txRightAmountContainer}>
+                  <Text style={[styles.txAmountText, tx.type === 'income' ? styles.incomeText : styles.expenseText]}>
+                    {tx.type === 'income' ? '+' : '-'}${tx.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ))
           ) : (
+            // Grouped by day
             Object.keys(groupedTxs).map(dayKey => {
               const dayTxs = groupedTxs[dayKey];
               const dayDate = new Date(dayTxs[0].date);
@@ -721,65 +789,52 @@ export default function DailyLedger() {
                       </Text>
                     </View>
                     <View style={styles.dayTotals}>
-                      <Text style={styles.dayIncomeVal}>
-                        ${dayIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </Text>
-                      <Text style={styles.dayExpenseVal}>
-                        ${dayExpense.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </Text>
+                      {dayIncome > 0 && (
+                        <Text style={styles.dayIncomeVal}>
+                          +${dayIncome.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                        </Text>
+                      )}
+                      {dayExpense > 0 && (
+                        <Text style={styles.dayExpenseVal}>
+                          -${dayExpense.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                        </Text>
+                      )}
                     </View>
                   </View>
 
                   {dayTxs.map(tx => (
-                    <View key={tx.id} style={styles.txRow}>
-                      <TouchableOpacity 
-                        style={styles.txRowClickable} 
-                        activeOpacity={0.7}
-                        onPress={() => handleEditTransaction(tx)}
-                      >
-                        <View style={styles.txCategoryContainer}>
-                          <Text style={styles.txCategoryText}>
-                            {getCategoryEmoji(tx.category)} {tx.category}
-                          </Text>
-                        </View>
+                    <TouchableOpacity 
+                      key={tx.id}
+                      style={styles.txRow} 
+                      activeOpacity={0.7}
+                      onPress={() => handleEditTransaction(tx)}
+                    >
+                      <View style={styles.txCategoryContainer}>
+                        <Text style={styles.txCategoryText}>
+                          {getCategoryEmoji(tx.category)} {tx.category}
+                        </Text>
+                      </View>
 
-                        <View style={styles.txMiddleContainer}>
-                          {tx.note ? (
-                            <View>
-                              <Text style={styles.txNoteText}>{tx.note}</Text>
-                              <Text style={styles.txAccountBelowNote}>{tx.account}</Text>
-                            </View>
-                          ) : (
-                            <Text style={styles.txAccountOnly}>{tx.account}</Text>
-                          )}
-                          {tx.bill_path && (
-                            <Text style={styles.attachmentLabel}>📎 Bill Attached</Text>
-                          )}
-                        </View>
+                      <View style={styles.txMiddleContainer}>
+                        {tx.note ? (
+                          <View>
+                            <Text style={styles.txNoteText}>{tx.note}</Text>
+                            <Text style={styles.txAccountBelowNote}>{tx.account}</Text>
+                          </View>
+                        ) : (
+                          <Text style={styles.txAccountOnly}>{tx.account}</Text>
+                        )}
+                        {tx.bill_path && (
+                          <Text style={styles.attachmentLabel}>📎 Bill Attached</Text>
+                        )}
+                      </View>
 
-                        <View style={styles.txRightAmountContainer}>
-                          <Text style={[styles.txAmountText, tx.type === 'income' ? styles.incomeText : styles.expenseText]}>
-                            ${tx.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </Text>
-                        </View>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity 
-                        style={styles.deleteBtn} 
-                        onPress={() => {
-                          Alert.alert(
-                            'Delete Transaction',
-                            'Are you sure you want to remove this ledger entry?',
-                            [
-                              { text: 'Cancel', style: 'cancel' },
-                              { text: 'Delete', style: 'destructive', onPress: () => deleteTransaction(tx.id) }
-                            ]
-                          );
-                        }}
-                      >
-                        <Trash2 color="#8E8E93" size={14} />
-                      </TouchableOpacity>
-                    </View>
+                      <View style={styles.txRightAmountContainer}>
+                        <Text style={[styles.txAmountText, tx.type === 'income' ? styles.incomeText : styles.expenseText]}>
+                          {tx.type === 'income' ? '+' : '-'}${tx.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
                   ))}
                 </View>
               );
@@ -788,7 +843,7 @@ export default function DailyLedger() {
         </ScrollView>
       )}
 
-      {activeSubTab === 'Calendar' && (
+      {activeSegment === 'Calendar' && (
         <View style={styles.calendarSubViewContainer}>
           {/* Days of the Week labels */}
           <View style={styles.weekLabelsRow}>
@@ -812,7 +867,7 @@ export default function DailyLedger() {
               <View key={rowIndex} style={styles.gridRow}>
                 {row.map((dayNum, cellIndex) => {
                   if (dayNum === null) {
-                    return <View key={cellIndex} style={styles.gridCellEmpty} />;
+                     return <View key={cellIndex} style={styles.gridCellEmpty} />;
                   }
 
                   const { income, expense, net } = getDailyStatsForCalendar(dayNum);
@@ -866,79 +921,30 @@ export default function DailyLedger() {
         </View>
       )}
 
-      {activeSubTab === 'Monthly' && (
+      {activeSegment === 'Analytics' && (
         <ScrollView contentContainerStyle={styles.listContent}>
-          {monthNames.map((name, index) => {
-            const { income, expense, net } = getMonthStats(index);
-            const isExpanded = expandedMonth === index;
-            const weeklyBreakdown = isExpanded ? getWeeklyStatsForMonth(index) : [];
+          {/* Summary Figures */}
+          <Text style={styles.analyticsSectionTitle}>Ledger Summary</Text>
+          <View style={styles.analyticsStatsGrid}>
+            <View style={[styles.analyticsStatsCell, { borderColor: '#0A84FF' }]}>
+              <Text style={styles.analyticsStatsLabel}>Total Income</Text>
+              <Text style={[styles.analyticsStatsValue, styles.blueText]}>
+                +${totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </Text>
+            </View>
+            <View style={[styles.analyticsStatsCell, { borderColor: '#FF453A' }]}>
+              <Text style={styles.analyticsStatsLabel}>Total Expenses</Text>
+              <Text style={[styles.analyticsStatsValue, styles.redText]}>
+                -${totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </Text>
+            </View>
+          </View>
 
-            if (index > new Date().getMonth() && income === 0 && expense === 0) {
-              return null;
-            }
-
-            return (
-              <View key={name} style={styles.monthGroup}>
-                <TouchableOpacity 
-                  activeOpacity={0.85}
-                  style={[styles.monthHeader, isExpanded && styles.monthHeaderExpanded]} 
-                  onPress={() => setExpandedMonth(isExpanded ? null : index)}
-                >
-                  <View>
-                    <Text style={styles.monthNameText}>{name}</Text>
-                    <Text style={styles.monthDateRangeText}>{`${index + 1}.1 ~ ${index + 1}.${new Date(selectedYear, index + 1, 0).getDate()}`}</Text>
-                  </View>
-
-                  <View style={styles.monthFigures}>
-                    <Text style={[styles.figureText, styles.incomeText]}>
-                      ${income.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </Text>
-                    <Text style={[styles.figureText, styles.expenseText]}>
-                      ${expense.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </Text>
-                    <Text style={styles.netText}>
-                      ${net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-
-                {isExpanded && (
-                  <View style={styles.weekContainer}>
-                    {weeklyBreakdown.map((week, idx) => (
-                      <View 
-                        key={idx} 
-                        style={[
-                          styles.weekRow,
-                          week.isActive && styles.weekRowActive
-                        ]}
-                      >
-                        <Text style={styles.weekRange}>{week.rangeStr}</Text>
-                        <View style={styles.weekFigures}>
-                          <Text style={[styles.weekFigureVal, styles.incomeText]}>
-                            ${week.income.toLocaleString()}
-                          </Text>
-                          <Text style={[styles.weekFigureVal, styles.expenseText]}>
-                            ${week.expense.toLocaleString()}
-                          </Text>
-                          <Text style={styles.weekNetVal}>
-                            ${week.net.toLocaleString()}
-                          </Text>
-                        </View>
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </View>
-            );
-          })}
-        </ScrollView>
-      )}
-
-      {activeSubTab === 'Total' && (
-        <ScrollView contentContainerStyle={styles.listContent}>
+          {/* Category outlays */}
+          <Text style={styles.analyticsSectionTitle}>Category Outlays</Text>
           {getCategoryTotalsList().length === 0 ? (
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No category breakdowns logged for this period.</Text>
+              <Text style={styles.emptyText}>No outlays logged for this period.</Text>
             </View>
           ) : (
             getCategoryTotalsList().map(item => (
@@ -948,7 +954,7 @@ export default function DailyLedger() {
                     {getCategoryEmoji(item.name)} {item.name}
                   </Text>
                   <Text style={[styles.categoryTotalsAmount, item.net >= 0 ? styles.incomeText : styles.expenseText]}>
-                    ${item.net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {item.net >= 0 ? '+' : ''}${item.net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </Text>
                 </View>
                 <View style={styles.categoryTotalsProgressContainer}>
@@ -963,70 +969,6 @@ export default function DailyLedger() {
                 </View>
               </View>
             ))
-          )}
-        </ScrollView>
-      )}
-
-      {activeSubTab === 'Note' && (
-        <ScrollView contentContainerStyle={styles.listContent}>
-          {notesTxs.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No annotated transactions logged for this period.</Text>
-            </View>
-          ) : (
-            notesTxs.map(tx => {
-              const dayDate = new Date(tx.date);
-              return (
-                <View key={tx.id} style={styles.txRow}>
-                  <TouchableOpacity 
-                    style={styles.txRowClickable} 
-                    activeOpacity={0.7}
-                    onPress={() => handleEditTransaction(tx)}
-                  >
-                    <View style={styles.txCategoryContainer}>
-                      <Text style={styles.txCategoryText}>
-                        {getCategoryEmoji(tx.category)} {tx.category}
-                      </Text>
-                      <Text style={styles.noteDateTag}>
-                        {`${dayDate.getMonth() + 1}.${dayDate.getDate()}`}
-                      </Text>
-                    </View>
-
-                    <View style={styles.txMiddleContainer}>
-                      <View>
-                        <Text style={styles.txNoteText}>{tx.note}</Text>
-                        <Text style={styles.txAccountBelowNote}>{tx.account}</Text>
-                      </View>
-                      {tx.bill_path && (
-                        <Text style={styles.attachmentLabel}>📎 Bill Attached</Text>
-                      )}
-                    </View>
-
-                    <View style={styles.txRightAmountContainer}>
-                      <Text style={[styles.txAmountText, tx.type === 'income' ? styles.incomeText : styles.expenseText]}>
-                        ${tx.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity 
-                    style={styles.deleteBtn} 
-                    onPress={() => {
-                      Alert.alert(
-                        'Delete Transaction',
-                        'Are you sure you want to remove this ledger entry?',
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          { text: 'Delete', style: 'destructive', onPress: () => deleteTransaction(tx.id) }
-                        ]
-                      );
-                    }}
-                  >
-                    <Trash2 color="#8E8E93" size={14} />
-                  </TouchableOpacity>
-                </View>
-              );
-            })
           )}
         </ScrollView>
       )}
@@ -1285,8 +1227,35 @@ export default function DailyLedger() {
               </View>
 
               <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-                <Text style={styles.saveBtnText}>Save Transaction</Text>
+                <Text style={styles.saveBtnText}>
+                  {editingTransactionId ? 'Update Transaction' : 'Save Transaction'}
+                </Text>
               </TouchableOpacity>
+
+              {editingTransactionId && (
+                <TouchableOpacity 
+                  style={styles.modalDeleteBtn} 
+                  onPress={() => {
+                    Alert.alert(
+                      'Delete Ledger Entry',
+                      'Are you sure you want to permanently remove this transaction ledger entry?',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { 
+                          text: 'Delete', 
+                          style: 'destructive', 
+                          onPress: () => {
+                            deleteTransaction(editingTransactionId);
+                            handleCloseModal();
+                          } 
+                        }
+                      ]
+                    );
+                  }}
+                >
+                  <Text style={styles.modalDeleteBtnText}>Delete Transaction</Text>
+                </TouchableOpacity>
+              )}
             </ScrollView>
 
             {/* Custom bottom numerical keypad overlay */}
@@ -2982,5 +2951,180 @@ const styles = StyleSheet.create({
   },
   greenText: {
     color: '#34C759',
+  },
+
+  // ==========================================
+  // DASHBOARD REDESIGN ADDITIONAL STYLES
+  // ==========================================
+  searchBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1C1C1E',
+    borderRadius: 10,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    paddingHorizontal: 12,
+    height: 40,
+    borderWidth: 1,
+    borderColor: '#2C2C2E',
+  },
+  searchBarIcon: {
+    marginRight: 8,
+  },
+  searchTextInput: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    flex: 1,
+    height: '100%',
+  },
+  searchClearText: {
+    color: '#0A84FF',
+    fontSize: 13,
+    fontWeight: '600',
+    paddingLeft: 8,
+  },
+  balanceCardWrapper: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  balanceCard: {
+    backgroundColor: '#1C1C1E',
+    borderColor: '#2C2C2E',
+    borderWidth: 1.5,
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 8,
+  },
+  balanceCardTitle: {
+    color: '#8E8E93',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  balanceCardAmount: {
+    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: '800',
+    marginBottom: 16,
+  },
+  balanceCardRow: {
+    flexDirection: 'row',
+    borderTopWidth: 0.5,
+    borderTopColor: '#2C2C2E',
+    paddingTop: 12,
+  },
+  balanceCardHalf: {
+    flex: 1,
+  },
+  balanceCardSubLabel: {
+    color: '#8E8E93',
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  balanceCardValueText: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  lightBlueText: {
+    color: '#30B0C7',
+  },
+  lightRedText: {
+    color: '#FF453A',
+  },
+  balanceCardSeparator: {
+    width: 1,
+    backgroundColor: '#2C2C2E',
+    marginHorizontal: 16,
+  },
+  segmentedControlRow: {
+    flexDirection: 'row',
+    backgroundColor: '#1C1C1E',
+    borderRadius: 10,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 2,
+    borderWidth: 1,
+    borderColor: '#2C2C2E',
+  },
+  segmentedItem: {
+    flex: 1,
+    paddingVertical: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  segmentedItemActive: {
+    backgroundColor: '#2C2C2E',
+  },
+  segmentedText: {
+    color: '#8E8E93',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  segmentedTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  analyticsSectionTitle: {
+    color: '#8E8E93',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  analyticsStatsGrid: {
+    flexDirection: 'row',
+    marginHorizontal: 12,
+    marginBottom: 16,
+  },
+  analyticsStatsCell: {
+    flex: 1,
+    backgroundColor: '#1C1C1E',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    padding: 16,
+    marginHorizontal: 4,
+  },
+  analyticsStatsLabel: {
+    color: '#8E8E93',
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  analyticsStatsValue: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  modalDeleteBtn: {
+    height: 48,
+    backgroundColor: '#FF453A',
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 12,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  modalDeleteBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });
