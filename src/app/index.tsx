@@ -83,6 +83,7 @@ export default function DailyLedger() {
   const { 
     transactions, 
     addTransaction, 
+    updateTransaction,
     deleteTransaction,
     isSyncing, 
     isOnline, 
@@ -106,12 +107,15 @@ export default function DailyLedger() {
   const [description, setDescription] = useState('');
   const [billPath, setBillPath] = useState<string | null>(null);
   const [billSize, setBillSize] = useState<string | null>(null);
-  const [aiText, setAiText] = useState('');
+  const [txDate, setTxDate] = useState<Date>(new Date());
+  const [pickerMonth, setPickerMonth] = useState<Date>(new Date());
 
   // UI Interactive States
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [showCategoryGrid, setShowCategoryGrid] = useState(false);
   const [showAccountGrid, setShowAccountGrid] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
 
   // Custom Category Form States
   const [showCustomCatModal, setShowCustomCatModal] = useState(false);
@@ -336,21 +340,42 @@ export default function DailyLedger() {
     }
   };
 
-  const handleParseNLP = () => {
-    if (!aiText.trim()) return;
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    
-    // Process input text using Regex offline extractor
-    const parsed = parseNaturalLanguageTransaction(aiText);
-    
-    setTxType(parsed.type);
-    if (parsed.amount) {
-      setAmount(parsed.amount.toString());
-    }
-    setCategory(parsed.category);
-    setAccount(parsed.account);
-    setNote(parsed.note);
-    setAiText(''); // Clear input
+  const handlePickerMonthChange = (direction: 'next' | 'prev') => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const newMonth = new Date(pickerMonth);
+    newMonth.setMonth(pickerMonth.getMonth() + (direction === 'next' ? 1 : -1));
+    setPickerMonth(newMonth);
+  };
+
+  const handleEditTransaction = (tx: Transaction) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setEditingTransactionId(tx.id);
+    setTxType(tx.type as 'income' | 'expense');
+    setAmount(tx.amount.toString());
+    setCategory(tx.category);
+    setAccount(tx.account);
+    setNote(tx.note || '');
+    setDescription(tx.description || '');
+    setBillPath(tx.bill_path || null);
+    const dateObj = new Date(tx.date);
+    setTxDate(dateObj);
+    setPickerMonth(dateObj);
+    setModalVisible(true);
+  };
+
+  const handleCloseModal = () => {
+    setAmount('0');
+    setCategory('Other');
+    setAccount('Cash');
+    setNote('');
+    setDescription('');
+    setBillPath(null);
+    setBillSize(null);
+    setTxDate(new Date());
+    setPickerMonth(new Date());
+    setEditingTransactionId(null);
+    setShowDatePicker(false);
+    setModalVisible(false);
   };
 
   const handleSave = () => {
@@ -360,28 +385,60 @@ export default function DailyLedger() {
       return;
     }
 
-    addTransaction({
-      id: `tx-${Date.now()}`,
-      type: txType,
-      amount: numericAmount,
-      category,
-      account,
-      date: Date.now(),
-      note: note.trim() || undefined,
-      description: description.trim() || undefined,
-      bill_path: billPath || undefined,
-    });
+    if (editingTransactionId) {
+      updateTransaction({
+        id: editingTransactionId,
+        type: txType,
+        amount: numericAmount,
+        category,
+        account,
+        date: txDate.getTime(),
+        note: note.trim() || undefined,
+        description: description.trim() || undefined,
+        bill_path: billPath || undefined,
+        sync_status: 'pending',
+        updated_at: Date.now(),
+      });
+    } else {
+      addTransaction({
+        id: `tx-${Date.now()}`,
+        type: txType,
+        amount: numericAmount,
+        category,
+        account,
+        date: txDate.getTime(),
+        note: note.trim() || undefined,
+        description: description.trim() || undefined,
+        bill_path: billPath || undefined,
+      });
+    }
 
     // Reset Form
-    setAmount('0');
-    setCategory('Other');
-    setAccount('Cash');
-    setNote('');
-    setDescription('');
-    setBillPath(null);
-    setBillSize(null);
-    setModalVisible(false);
+    handleCloseModal();
   };
+
+  // Date picker calendar helper calculations
+  const pickerYear = pickerMonth.getFullYear();
+  const pickerMonthIdx = pickerMonth.getMonth();
+  const pickerFirstDayIndex = new Date(pickerYear, pickerMonthIdx, 1).getDay();
+  const pickerTotalDays = new Date(pickerYear, pickerMonthIdx + 1, 0).getDate();
+
+  const pickerCells: (number | null)[] = [];
+  for (let i = 0; i < pickerFirstDayIndex; i++) pickerCells.push(null);
+  for (let day = 1; day <= pickerTotalDays; day++) pickerCells.push(day);
+
+  const pickerRows: (number | null)[][] = [];
+  let currentPickerRow: (number | null)[] = [];
+  pickerCells.forEach((cell, idx) => {
+    currentPickerRow.push(cell);
+    if (currentPickerRow.length === 7 || idx === pickerCells.length - 1) {
+      while (currentPickerRow.length < 7) currentPickerRow.push(null);
+      pickerRows.push(currentPickerRow);
+      currentPickerRow = [];
+    }
+  });
+
+  const pickerMonthName = pickerMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
   return (
     <View style={styles.container}>
@@ -499,46 +556,53 @@ export default function DailyLedger() {
 
                   {dayTxs.map(tx => (
                     <View key={tx.id} style={styles.txRow}>
-                      <View style={styles.txCategoryContainer}>
-                        <Text style={styles.txCategoryText}>
-                          {getCategoryEmoji(tx.category)} {tx.category}
-                        </Text>
-                      </View>
+                      <TouchableOpacity 
+                        style={styles.txRowClickable} 
+                        activeOpacity={0.7}
+                        onPress={() => handleEditTransaction(tx)}
+                      >
+                        <View style={styles.txCategoryContainer}>
+                          <Text style={styles.txCategoryText}>
+                            {getCategoryEmoji(tx.category)} {tx.category}
+                          </Text>
+                        </View>
 
-                      <View style={styles.txMiddleContainer}>
-                        {tx.note ? (
-                          <View>
-                            <Text style={styles.txNoteText}>{tx.note}</Text>
-                            <Text style={styles.txAccountBelowNote}>{tx.account}</Text>
-                          </View>
-                        ) : (
-                          <Text style={styles.txAccountOnly}>{tx.account}</Text>
-                        )}
-                        {tx.bill_path && (
-                          <Text style={styles.attachmentLabel}>📎 Bill Attached</Text>
-                        )}
-                      </View>
+                        <View style={styles.txMiddleContainer}>
+                          {tx.note ? (
+                            <View>
+                              <Text style={styles.txNoteText}>{tx.note}</Text>
+                              <Text style={styles.txAccountBelowNote}>{tx.account}</Text>
+                            </View>
+                          ) : (
+                            <Text style={styles.txAccountOnly}>{tx.account}</Text>
+                          )}
+                          {tx.bill_path && (
+                            <Text style={styles.attachmentLabel}>📎 Bill Attached</Text>
+                          )}
+                        </View>
 
-                      <View style={styles.txRightContainer}>
-                        <Text style={[styles.txAmountText, tx.type === 'income' ? styles.incomeText : styles.expenseText]}>
-                          ${tx.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </Text>
-                        <TouchableOpacity 
-                          style={styles.deleteBtn} 
-                          onPress={() => {
-                            Alert.alert(
-                              'Delete Transaction',
-                              'Are you sure you want to remove this ledger entry?',
-                              [
-                                { text: 'Cancel', style: 'cancel' },
-                                { text: 'Delete', style: 'destructive', onPress: () => deleteTransaction(tx.id) }
-                              ]
-                            );
-                          }}
-                        >
-                          <Trash2 color="#8E8E93" size={14} />
-                        </TouchableOpacity>
-                      </View>
+                        <View style={styles.txRightAmountContainer}>
+                          <Text style={[styles.txAmountText, tx.type === 'income' ? styles.incomeText : styles.expenseText]}>
+                            ${tx.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity 
+                        style={styles.deleteBtn} 
+                        onPress={() => {
+                          Alert.alert(
+                            'Delete Transaction',
+                            'Are you sure you want to remove this ledger entry?',
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              { text: 'Delete', style: 'destructive', onPress: () => deleteTransaction(tx.id) }
+                            ]
+                          );
+                        }}
+                      >
+                        <Trash2 color="#8E8E93" size={14} />
+                      </TouchableOpacity>
                     </View>
                   ))}
                 </View>
@@ -738,45 +802,52 @@ export default function DailyLedger() {
               const dayDate = new Date(tx.date);
               return (
                 <View key={tx.id} style={styles.txRow}>
-                  <View style={styles.txCategoryContainer}>
-                    <Text style={styles.txCategoryText}>
-                      {getCategoryEmoji(tx.category)} {tx.category}
-                    </Text>
-                    <Text style={styles.noteDateTag}>
-                      {`${dayDate.getMonth() + 1}.${dayDate.getDate()}`}
-                    </Text>
-                  </View>
-
-                  <View style={styles.txMiddleContainer}>
-                    <View>
-                      <Text style={styles.txNoteText}>{tx.note}</Text>
-                      <Text style={styles.txAccountBelowNote}>{tx.account}</Text>
+                  <TouchableOpacity 
+                    style={styles.txRowClickable} 
+                    activeOpacity={0.7}
+                    onPress={() => handleEditTransaction(tx)}
+                  >
+                    <View style={styles.txCategoryContainer}>
+                      <Text style={styles.txCategoryText}>
+                        {getCategoryEmoji(tx.category)} {tx.category}
+                      </Text>
+                      <Text style={styles.noteDateTag}>
+                        {`${dayDate.getMonth() + 1}.${dayDate.getDate()}`}
+                      </Text>
                     </View>
-                    {tx.bill_path && (
-                      <Text style={styles.attachmentLabel}>📎 Bill Attached</Text>
-                    )}
-                  </View>
 
-                  <View style={styles.txRightContainer}>
-                    <Text style={[styles.txAmountText, tx.type === 'income' ? styles.incomeText : styles.expenseText]}>
-                      ${tx.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                    </Text>
-                    <TouchableOpacity 
-                      style={styles.deleteBtn} 
-                      onPress={() => {
-                        Alert.alert(
-                          'Delete Transaction',
-                          'Are you sure you want to remove this ledger entry?',
-                          [
-                            { text: 'Cancel', style: 'cancel' },
-                            { text: 'Delete', style: 'destructive', onPress: () => deleteTransaction(tx.id) }
-                          ]
-                        );
-                      }}
-                    >
-                      <Trash2 color="#8E8E93" size={14} />
-                    </TouchableOpacity>
-                  </View>
+                    <View style={styles.txMiddleContainer}>
+                      <View>
+                        <Text style={styles.txNoteText}>{tx.note}</Text>
+                        <Text style={styles.txAccountBelowNote}>{tx.account}</Text>
+                      </View>
+                      {tx.bill_path && (
+                        <Text style={styles.attachmentLabel}>📎 Bill Attached</Text>
+                      )}
+                    </View>
+
+                    <View style={styles.txRightAmountContainer}>
+                      <Text style={[styles.txAmountText, tx.type === 'income' ? styles.incomeText : styles.expenseText]}>
+                        ${tx.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={styles.deleteBtn} 
+                    onPress={() => {
+                      Alert.alert(
+                        'Delete Transaction',
+                        'Are you sure you want to remove this ledger entry?',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          { text: 'Delete', style: 'destructive', onPress: () => deleteTransaction(tx.id) }
+                        ]
+                      );
+                    }}
+                  >
+                    <Trash2 color="#8E8E93" size={14} />
+                  </TouchableOpacity>
                 </View>
               );
             })
@@ -801,38 +872,20 @@ export default function DailyLedger() {
         animationType="slide"
         transparent={true}
         visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)}
+        onRequestClose={handleCloseModal}
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalContent}>
             
             {/* Modal Title bar */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add Transaction</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
+              <Text style={styles.modalTitle}>{editingTransactionId ? 'Edit Transaction' : 'Add Transaction'}</Text>
+              <TouchableOpacity onPress={handleCloseModal}>
                 <Text style={styles.cancelLink}>Cancel</Text>
               </TouchableOpacity>
             </View>
 
             <ScrollView contentContainerStyle={styles.modalFormContent}>
-              {/* AI Natural Language Text Box */}
-              <View style={styles.aiBox}>
-                <View style={styles.aiHeader}>
-                  <Sparkles color="#AF52DE" size={16} />
-                  <Text style={styles.aiTitle}>AI Natural Language Smart Entry</Text>
-                </View>
-                <TextInput
-                  placeholder="e.g. Spent 45 dollars on lunch yesterday"
-                  placeholderTextColor="#8E8E93"
-                  style={styles.aiInput}
-                  value={aiText}
-                  onChangeText={setAiText}
-                />
-                <TouchableOpacity style={styles.parseBtn} onPress={handleParseNLP}>
-                  <Text style={styles.parseBtnText}>Parse Transaction Details</Text>
-                </TouchableOpacity>
-              </View>
-
               {/* Transaction Type Selectors */}
               <View style={styles.typeRow}>
                 <TouchableOpacity 
@@ -867,6 +920,94 @@ export default function DailyLedger() {
                 >
                   <Text style={styles.amountSelectorVal}>${amount}</Text>
                 </TouchableOpacity>
+              </View>
+
+              {/* Transaction Date Picker Selector */}
+              <View style={styles.formItem}>
+                <Text style={styles.formLabel}>Date</Text>
+                <TouchableOpacity 
+                  style={styles.dropdownTrigger}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setShowDatePicker(!showDatePicker);
+                  }}
+                >
+                  <Text style={styles.dropdownText}>
+                    📅 {txDate.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}
+                  </Text>
+                </TouchableOpacity>
+
+                {showDatePicker && (
+                  <View style={styles.datePickerContainer}>
+                    {/* Picker Month/Year Switcher Header */}
+                    <View style={styles.pickerHeader}>
+                      <TouchableOpacity 
+                        onPress={() => handlePickerMonthChange('prev')}
+                        style={styles.pickerChevronBtn}
+                      >
+                        <ChevronLeft color="#FFFFFF" size={18} />
+                      </TouchableOpacity>
+                      <Text style={styles.pickerMonthText}>{pickerMonthName}</Text>
+                      <TouchableOpacity 
+                        onPress={() => handlePickerMonthChange('next')}
+                        style={styles.pickerChevronBtn}
+                      >
+                        <ChevronRight color="#FFFFFF" size={18} />
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Picker Weekday Labels */}
+                    <View style={styles.pickerWeekLabelsRow}>
+                      {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d, idx) => (
+                        <Text key={idx} style={[styles.pickerWeekLabel, idx === 0 && styles.pickerSundayLabel, idx === 6 && styles.pickerSaturdayLabel]}>
+                          {d}
+                        </Text>
+                      ))}
+                    </View>
+
+                    {/* Picker Grid Cells */}
+                    <View style={styles.pickerGridContainer}>
+                      {pickerRows.map((row, rowIndex) => (
+                        <View key={rowIndex} style={styles.pickerGridRow}>
+                          {row.map((dayNum, cellIndex) => {
+                            if (dayNum === null) {
+                              return <View key={cellIndex} style={styles.pickerGridCellEmpty} />;
+                            }
+
+                            const isSelected = 
+                              txDate.getDate() === dayNum &&
+                              txDate.getMonth() === pickerMonthIdx &&
+                              txDate.getFullYear() === pickerYear;
+
+                            return (
+                              <TouchableOpacity
+                                key={cellIndex}
+                                style={[
+                                  styles.pickerGridCell,
+                                  isSelected && styles.pickerGridCellSelected
+                                ]}
+                                onPress={() => {
+                                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                  setTxDate(new Date(pickerYear, pickerMonthIdx, dayNum));
+                                  setShowDatePicker(false);
+                                }}
+                              >
+                                <Text style={[
+                                  styles.pickerDayNumber,
+                                  isSelected && styles.pickerDayNumberSelected,
+                                  cellIndex === 0 && !isSelected && styles.pickerSundayText,
+                                  cellIndex === 6 && !isSelected && styles.pickerSaturdayText,
+                                ]}>
+                                  {dayNum}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
               </View>
 
               <View style={styles.formItem}>
@@ -1905,5 +2046,99 @@ const styles = StyleSheet.create({
     color: '#AF52DE',
     fontSize: 11,
     fontWeight: '700',
+  },
+
+  // Date picker custom styles
+  datePickerContainer: {
+    backgroundColor: '#121214',
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#2C2C2E',
+  },
+  pickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  pickerChevronBtn: {
+    padding: 4,
+  },
+  pickerMonthText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  pickerWeekLabelsRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#2C2C2E',
+    paddingBottom: 6,
+    marginBottom: 6,
+  },
+  pickerWeekLabel: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#8E8E93',
+  },
+  pickerSundayLabel: {
+    color: '#FF453A',
+  },
+  pickerSaturdayLabel: {
+    color: '#0A84FF',
+  },
+  pickerGridContainer: {
+    paddingBottom: 4,
+  },
+  pickerGridRow: {
+    flexDirection: 'row',
+    height: 32,
+    alignItems: 'center',
+  },
+  pickerGridCell: {
+    flex: 1,
+    height: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 6,
+    margin: 1,
+  },
+  pickerGridCellSelected: {
+    backgroundColor: '#FF453A',
+  },
+  pickerGridCellEmpty: {
+    flex: 1,
+    margin: 1,
+  },
+  pickerDayNumber: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  pickerDayNumberSelected: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  pickerSundayText: {
+    color: '#FF453A',
+  },
+  pickerSaturdayText: {
+    color: '#0A84FF',
+  },
+
+  // Clickable ledger row edit trigger styles
+  txRowClickable: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  txRightAmountContainer: {
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+    paddingRight: 4,
   },
 });
