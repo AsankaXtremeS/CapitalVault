@@ -73,6 +73,10 @@ interface LocalStoreState {
   customCategories: { name: string; emoji: string; type: 'income' | 'expense' }[];
   addCustomCategory: (cat: { name: string; emoji: string; type: 'income' | 'expense' }) => Promise<void>;
   loadCustomCategoriesList: () => Promise<void>;
+
+  // Category Budgets
+  categoryBudgets: Record<string, number>;
+  updateCategoryBudget: (category: string, limit: number) => Promise<void>;
   
   // Cache utilities
   loadAllData: () => Promise<void>;
@@ -210,6 +214,25 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
       }
     },
 
+    categoryBudgets: {},
+    updateCategoryBudget: async (category, limit) => {
+      const budgets = { ...get().categoryBudgets, [category]: limit };
+      set({ categoryBudgets: budgets });
+      const json = JSON.stringify(budgets);
+      if (Platform.OS === 'web') {
+        localStorage.setItem('money_app_category_budgets', json);
+      } else {
+        try {
+          await SecureStore.setItemAsync('money_app_category_budgets', json);
+        } catch (e) {}
+      }
+      
+      // Auto cloud sync
+      if (get().isOnline) {
+        get().triggerCloudSync();
+      }
+    },
+
     setOnlineStatus: (isOnline: boolean) => {
       const wasOffline = !get().isOnline;
       set({ isOnline });
@@ -301,7 +324,10 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
             // Sync Transactions
             for (const tx of pendingTxs) {
               if (tx.sync_status === 'deleted') {
-                await supabase.from('transactions').delete().eq('id', tx.id).eq('user_id', userId);
+                const { error } = await supabase.from('transactions').delete().eq('id', tx.id).eq('user_id', userId);
+                if (error) {
+                  throw new Error(`Database synchronization failed. Please copy and paste the SQL commands from "supabase_schema.sql" into your Supabase Dashboard SQL Editor to create your database tables! (Error: ${error.message})`);
+                }
                 await db.runAsync('DELETE FROM transactions WHERE id = ?', [tx.id]);
               } else {
                 const { error } = await supabase.from('transactions').upsert({
@@ -317,16 +343,20 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
                   bill_path: tx.bill_path || null,
                   updated_at: tx.updated_at
                 });
-                if (!error) {
-                  await db.runAsync("UPDATE transactions SET sync_status = 'synced' WHERE id = ?", [tx.id]);
+                if (error) {
+                  throw new Error(`Database synchronization failed. It looks like your tables are not provisioned in Supabase. Please copy and paste the SQL schema from "supabase_schema.sql" into your Supabase SQL Editor first to instantly create your database tables! (Error: ${error.message})`);
                 }
+                await db.runAsync("UPDATE transactions SET sync_status = 'synced' WHERE id = ?", [tx.id]);
               }
             }
 
             // Sync Debts
             for (const debt of pendingDebts) {
               if (debt.sync_status === 'deleted') {
-                await supabase.from('debts_lending').delete().eq('id', debt.id).eq('user_id', userId);
+                const { error } = await supabase.from('debts_lending').delete().eq('id', debt.id).eq('user_id', userId);
+                if (error) {
+                  throw new Error(`Database synchronization failed. Please copy and paste the SQL commands from "supabase_schema.sql" into your Supabase SQL Editor first! (Error: ${error.message})`);
+                }
                 await db.runAsync('DELETE FROM debts_lending WHERE id = ?', [debt.id]);
               } else {
                 const { error } = await supabase.from('debts_lending').upsert({
@@ -341,16 +371,20 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
                   payment_progress: debt.payment_progress,
                   updated_at: debt.updated_at
                 });
-                if (!error) {
-                  await db.runAsync("UPDATE debts_lending SET sync_status = 'synced' WHERE id = ?", [debt.id]);
+                if (error) {
+                  throw new Error(`Database synchronization failed. It looks like your debts_lending table is not provisioned. Please copy and paste the SQL schema from "supabase_schema.sql" into your Supabase SQL Editor first! (Error: ${error.message})`);
                 }
+                await db.runAsync("UPDATE debts_lending SET sync_status = 'synced' WHERE id = ?", [debt.id]);
               }
             }
 
             // Sync Loans
             for (const loan of pendingLoans) {
               if (loan.sync_status === 'deleted') {
-                await supabase.from('loans_installments').delete().eq('id', loan.id).eq('user_id', userId);
+                const { error } = await supabase.from('loans_installments').delete().eq('id', loan.id).eq('user_id', userId);
+                if (error) {
+                  throw new Error(`Database synchronization failed. Please copy and paste the SQL commands from "supabase_schema.sql" into your Supabase SQL Editor first! (Error: ${error.message})`);
+                }
                 await db.runAsync('DELETE FROM loans_installments WHERE id = ?', [loan.id]);
               } else {
                 const { error } = await supabase.from('loans_installments').upsert({
@@ -365,16 +399,17 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
                   reminders_enabled: loan.reminders_enabled,
                   updated_at: loan.updated_at
                 });
-                if (!error) {
-                  await db.runAsync("UPDATE loans_installments SET sync_status = 'synced' WHERE id = ?", [loan.id]);
+                if (error) {
+                  throw new Error(`Database synchronization failed. It looks like your loans_installments table is not provisioned. Please copy and paste the SQL schema from "supabase_schema.sql" into your Supabase SQL Editor first! (Error: ${error.message})`);
                 }
+                await db.runAsync("UPDATE loans_installments SET sync_status = 'synced' WHERE id = ?", [loan.id]);
               }
             }
 
             // Backup Custom Categories
             const customCats = get().customCategories;
             if (customCats.length > 0) {
-              await supabase.from('custom_categories').upsert(
+              const { error } = await supabase.from('custom_categories').upsert(
                 customCats.map(c => ({
                   user_id: userId,
                   name: c.name,
@@ -382,6 +417,9 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
                   type: c.type
                 }))
               );
+              if (error) {
+                throw new Error(`Database synchronization failed. It looks like your custom_categories table is not provisioned. Please copy and paste the SQL schema from "supabase_schema.sql" into your Supabase SQL Editor first! (Error: ${error.message})`);
+              }
             }
 
           } else {
@@ -436,6 +474,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
         }
       } catch (error) {
         console.error('Cloud synchronization failed:', error);
+        if (force) throw error;
       } finally {
         set({ isSyncing: false });
       }
@@ -811,7 +850,8 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
           const { data: dbCats, error: cErr } = await supabase.from('custom_categories').select('*').eq('user_id', userId);
           
           if (tErr || dErr || lErr || cErr) {
-            throw new Error('Cloud fetch failed. Ensure tables are correctly set up in Supabase.');
+            console.error('Supabase fetch details:', { tErr, dErr, lErr, cErr });
+            throw new Error('Cloud fetch failed. It looks like your database tables are not provisioned in Supabase. Please copy and paste the SQL schema from the file "supabase_schema.sql" into your Supabase Dashboard SQL Editor first to instantly create your database tables!');
           }
 
           txs = (dbTxs || []) as Transaction[];
@@ -940,12 +980,20 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
       const syncMobile = await getKey('money_app_sync_on_mobile_data');
       const autoSync = await getKey('money_app_auto_cloud_sync');
       const lastSync = await getKey('money_app_last_synced_at');
+      const budgetsJson = await getKey('money_app_category_budgets');
+      let budgets: Record<string, number> = {};
+      if (budgetsJson) {
+        try {
+          budgets = JSON.parse(budgetsJson);
+        } catch (e) {}
+      }
 
       set({
         user: sessionUser,
         syncOnMobileData: syncMobile === 'false' ? false : true,
         autoCloudSync: autoSync === 'false' ? false : true,
-        lastSyncedAt: lastSync || null
+        lastSyncedAt: lastSync || null,
+        categoryBudgets: budgets
       });
     },
   };

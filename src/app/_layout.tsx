@@ -11,7 +11,8 @@ import {
   BookOpen, 
   BarChart3, 
   HandCoins, 
-  Percent 
+  Percent,
+  PiggyBank
 } from 'lucide-react-native';
 
 export default function RootLayout() {
@@ -105,6 +106,15 @@ export default function RootLayout() {
               title: 'Loans',
               tabBarIcon: ({ color, size }) => (
                 <Percent color={color} size={size - 2} />
+              ),
+            }}
+          />
+          <Tabs.Screen
+            name="budget"
+            options={{
+              title: 'Budget',
+              tabBarIcon: ({ color, size }) => (
+                <PiggyBank color={color} size={size - 2} />
               ),
             }}
           />

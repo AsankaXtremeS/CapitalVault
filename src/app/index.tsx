@@ -174,9 +174,11 @@ export default function DailyLedger() {
       if (isSignUpMode) {
         await signUp(authEmail.trim(), authPassword.trim());
         setAuthSuccess('Account registered and backed up successfully!');
+        setTimeout(() => setAuthSuccess(null), 5000);
       } else {
         await signIn(authEmail.trim(), authPassword.trim());
-        setAuthSuccess('Signed in successfully! Data syncing...');
+        setAuthSuccess('Signed in successfully!');
+        setTimeout(() => setAuthSuccess(null), 5000);
       }
     } catch (e: any) {
       setAuthError(e.message || 'Authentication failed.');
@@ -973,6 +975,7 @@ export default function DailyLedger() {
         </ScrollView>
       )}
 
+
       {/* Red FAB Plus Trigger */}
       <TouchableOpacity 
         style={styles.fab} 
@@ -1606,6 +1609,9 @@ export default function DailyLedger() {
                         setSyncLoading(true);
                         try {
                           await triggerCloudSync(true); // force sync
+                          Alert.alert('Success', 'Local vault backed up successfully to the cloud!');
+                        } catch (e: any) {
+                          Alert.alert('Backup Failed', e.message || 'Cloud backup failed.');
                         } finally {
                           setSyncLoading(false);
                         }
@@ -3125,6 +3131,192 @@ const styles = StyleSheet.create({
   modalDeleteBtnText: {
     color: '#FFFFFF',
     fontSize: 15,
+    fontWeight: '700',
+  },
+
+  // ==========================================
+  // BUDGET TAB ADDITIONAL STYLES
+  // ==========================================
+  budgetDashboardCard: {
+    backgroundColor: '#1C1C1E',
+    borderColor: '#2C2C2E',
+    borderWidth: 1.5,
+    borderRadius: 16,
+    padding: 16,
+    marginHorizontal: 16,
+    marginBottom: 20,
+  },
+  budgetHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  budgetValueSubLabel: {
+    color: '#8E8E93',
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  budgetValueAmt: {
+    fontSize: 24,
+    fontWeight: '800',
+  },
+  pdfDownloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0A84FF',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  pdfDownloadBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  budgetSummaryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    borderTopWidth: 0.5,
+    borderTopColor: '#2C2C2E',
+    paddingTop: 12,
+  },
+  budgetGridItem: {
+    width: '50%',
+    marginBottom: 10,
+  },
+  budgetGridLabel: {
+    color: '#8E8E93',
+    fontSize: 9,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  budgetGridValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 2,
+    color: '#FFFFFF',
+  },
+  budgetLimitCard: {
+    backgroundColor: '#1C1C1E',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#2C2C2E',
+    padding: 14,
+    marginHorizontal: 16,
+    marginBottom: 10,
+  },
+  budgetCategoryMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  budgetCategoryTitle: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  budgetCategoryStatusSubtitle: {
+    color: '#8E8E93',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  setLimitBtn: {
+    backgroundColor: '#2C2C2E',
+    borderWidth: 1,
+    borderColor: '#3A3A3C',
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  setLimitBtnText: {
+    color: '#0A84FF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  budgetLimitTextRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  budgetSpentText: {
+    color: '#8E8E93',
+    fontSize: 11,
+  },
+  budgetRemainingText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  progressBarBg: {
+    height: 6,
+    backgroundColor: '#2C2C2E',
+    borderRadius: 3,
+    marginTop: 6,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  budgetDebtCard: {
+    backgroundColor: '#1C1C1E',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#2C2C2E',
+    padding: 14,
+    marginHorizontal: 16,
+    marginBottom: 10,
+  },
+  budgetDebtName: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  budgetDebtBadge: {
+    fontSize: 10,
+    fontWeight: '700',
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  badgeLending: {
+    backgroundColor: '#E8F8EE',
+    color: '#34C759',
+  },
+  badgeBorrowing: {
+    backgroundColor: '#FFEBEB',
+    color: '#FF453A',
+  },
+  budgetLoanCard: {
+    backgroundColor: '#1C1C1E',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#2C2C2E',
+    padding: 14,
+    marginHorizontal: 16,
+    marginBottom: 10,
+  },
+  budgetLoanTitle: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  budgetLoanEmiLabel: {
+    color: '#FF453A',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  budgetSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  formatPercent: {
     fontWeight: '700',
   },
 });
