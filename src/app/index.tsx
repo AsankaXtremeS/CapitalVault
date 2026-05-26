@@ -117,7 +117,9 @@ export default function DailyLedger() {
     clearPipeValue,
     openCalculator,
     customCategories,
-    addCustomCategory
+    addCustomCategory,
+    importantNotes,
+    updateImportantNotes
   } = useLocalStore();
 
   const [modalVisible, setModalVisible] = useState(false);
@@ -301,7 +303,7 @@ export default function DailyLedger() {
   }, [calculatorPipeValue, modalVisible]);
 
   // Segmented Controller Switcher State
-  const [activeSegment, setActiveSegment] = useState<'Ledger' | 'Calendar' | 'Analytics'>('Ledger');
+  const [activeSegment, setActiveSegment] = useState<'Ledger' | 'Calendar' | 'Analytics' | 'Notes'>('Ledger');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [expandedMonth, setExpandedMonth] = useState<number | null>(new Date().getMonth());
 
@@ -701,7 +703,7 @@ export default function DailyLedger() {
 
       {/* Segmented Switcher Control */}
       <View style={styles.segmentedControlRow}>
-        {(['Ledger', 'Calendar', 'Analytics'] as const).map(segment => {
+        {(['Ledger', 'Calendar', 'Analytics', 'Notes'] as const).map(segment => {
           const isActive = activeSegment === segment;
           return (
             <TouchableOpacity 
@@ -974,6 +976,29 @@ export default function DailyLedger() {
               </View>
             ))
           )}
+        </ScrollView>
+      )}
+
+      {activeSegment === 'Notes' && (
+        <ScrollView contentContainerStyle={styles.listContent}>
+          <Text style={styles.analyticsSectionTitle}>Important Notes</Text>
+          <View style={styles.notesCard}>
+            <Text style={styles.notesLabel}>Personal Notepad</Text>
+            <TextInput
+              style={styles.notesInput}
+              multiline={true}
+              placeholder="Jot down important account numbers, settlement details, monthly reminders or budget planning ideas..."
+              placeholderTextColor="#8E8E93"
+              value={importantNotes}
+              onChangeText={(text) => {
+                updateImportantNotes(text);
+              }}
+              textAlignVertical="top"
+            />
+            <View style={styles.notesFooter}>
+              <Text style={styles.notesFooterText}>✓ Autosaved to local secure storage</Text>
+            </View>
+          </View>
         </ScrollView>
       )}
 
@@ -3321,5 +3346,41 @@ const styles = StyleSheet.create({
   },
   formatPercent: {
     fontWeight: '700',
+  },
+  notesCard: {
+    backgroundColor: '#1C1C1E',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#2C2C2E',
+  },
+  notesLabel: {
+    color: '#1FA89B',
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginBottom: 10,
+    letterSpacing: 0.5,
+  },
+  notesInput: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    minHeight: 220,
+    lineHeight: 22,
+    textAlignVertical: 'top',
+    paddingTop: 0,
+  },
+  notesFooter: {
+    borderTopWidth: 1,
+    borderTopColor: '#2C2C2E',
+    paddingTop: 10,
+    marginTop: 10,
+    alignItems: 'flex-end',
+  },
+  notesFooterText: {
+    color: '#8E8E93',
+    fontSize: 11,
+    fontWeight: '500',
   },
 });

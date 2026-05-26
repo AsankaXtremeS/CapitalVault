@@ -106,6 +106,11 @@ interface LocalStoreState {
   categoryBudgets: Record<string, number>;
   updateCategoryBudget: (category: string, limit: number) => Promise<void>;
 
+  // Important Notes
+  importantNotes: string;
+  updateImportantNotes: (notes: string) => Promise<void>;
+  loadImportantNotes: () => Promise<void>;
+
   // Cache utilities
   loadAllData: () => Promise<void>;
   setOnlineStatus: (status: boolean) => void;
@@ -292,6 +297,29 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
       }
     },
 
+    importantNotes: "",
+    updateImportantNotes: async (notes) => {
+      set({ importantNotes: notes });
+      if (Platform.OS === "web") {
+        localStorage.setItem("money_app_important_notes", notes);
+      } else {
+        try {
+          await SecureStore.setItemAsync("money_app_important_notes", notes);
+        } catch (e) {}
+      }
+    },
+    loadImportantNotes: async () => {
+      let notes: string | null = null;
+      if (Platform.OS === "web") {
+        notes = localStorage.getItem("money_app_important_notes");
+      } else {
+        try {
+          notes = await SecureStore.getItemAsync("money_app_important_notes");
+        } catch (e) {}
+      }
+      set({ importantNotes: notes || "" });
+    },
+
     setOnlineStatus: (isOnline: boolean) => {
       const wasOffline = !get().isOnline;
       set({ isOnline });
@@ -332,6 +360,9 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
 
         // Load custom categories
         await get().loadCustomCategoriesList();
+
+        // Load important notes
+        await get().loadImportantNotes();
 
         set({
           transactions: dbTxs,
@@ -1373,8 +1404,12 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
 
         if (Platform.OS === "web") {
           localStorage.removeItem("money_app_custom_categories");
+          localStorage.removeItem("money_app_important_notes");
         } else {
           await SecureStore.deleteItemAsync("money_app_custom_categories");
+          try {
+            await SecureStore.deleteItemAsync("money_app_important_notes");
+          } catch (e) {}
         }
 
         set({
@@ -1383,6 +1418,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
           loans: [],
           recurringTemplates: [],
           customCategories: [],
+          importantNotes: "",
         });
 
         // Trigger loadAllData to repopulate initial seeded defaults as if fresh install

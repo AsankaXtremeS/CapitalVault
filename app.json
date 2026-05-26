@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "money-app",
-    "slug": "money-app",
+    "name": "Money Manager",
+    "slug": "Money Manager",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/Logo.png",

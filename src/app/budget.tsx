@@ -576,14 +576,7 @@ export default function BudgetScreen() {
                 <View key={tmpl.id} style={styles.recurringTemplateCard}>
                   <View style={styles.templateMainRow}>
                     <View style={styles.templateLeftCol}>
-                      <View
-                        style={[
-                          styles.templateEmojiContainer,
-                          isExpense
-                            ? styles.emojiBgExpense
-                            : styles.emojiBgIncome,
-                        ]}
-                      >
+                      <View style={styles.templateEmojiContainer}>
                         <Text style={styles.templateEmoji}>
                           {getCategoryEmoji(tmpl.category)}
                         </Text>

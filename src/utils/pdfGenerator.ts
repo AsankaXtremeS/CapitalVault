@@ -43,32 +43,7 @@ export async function generateBudgetReportPDF(data: PDFReportData): Promise<void
     }).format(val);
   };
 
-  // Helper to extract category emoji
-  const CATEGORY_EMOJIS: Record<string, string> = {
-    Food: '🍜',
-    'Social Life': '🥳',
-    Pets: '🐱',
-    Transport: '🚖',
-    Culture: '🎬',
-    Household: '🏠',
-    Apparel: '👕',
-    Beauty: '💄',
-    Health: '💊',
-    Education: '📚',
-    Gift: '🎁',
-    Salary: '💼',
-    Allowance: '🪙',
-    Bonus: '✨',
-    'Petty cash': '💵',
-    Other: '📦',
-  };
-
-  const getEmoji = (cat: string) => {
-    return CATEGORY_EMOJIS[cat] || '📦';
-  };
-
   // 1. Process Category Budgets rows
-  // Get all unique categories from transactions or budgets
   const activeExpenseCategories = Array.from(
     new Set([
       ...transactions.filter(t => t.type === 'expense').map(t => t.category),
@@ -102,7 +77,7 @@ export async function generateBudgetReportPDF(data: PDFReportData): Promise<void
 
     categoryRowsHtml += `
       <tr>
-        <td><strong>${getEmoji(cat)} ${cat}</strong></td>
+        <td><strong>${cat}</strong></td>
         <td class="num">${limit > 0 ? formatCurrency(limit) : 'Not Configured'}</td>
         <td class="num font-red">${formatCurrency(spent)}</td>
         <td class="num ${remaining >= 0 ? 'font-green' : 'font-red'}">${limit > 0 ? formatCurrency(remaining) : '—'}</td>
@@ -116,24 +91,46 @@ export async function generateBudgetReportPDF(data: PDFReportData): Promise<void
     categoryRowsHtml = `<tr><td colspan="6" style="text-align: center; color: #8E8E93; padding: 20px;">No category budgets active for this month.</td></tr>`;
   }
 
-  // 2. Process Loans list
+  // 2. Separate Loans (Expense) and Investments (Income)
+  const loanExpenseEntries = loans.filter(l => l.entry_type === 'expense' || !l.entry_type);
+  const loanIncomeEntries = loans.filter(l => l.entry_type === 'income');
+
+  // 2a. Process Loans and Borrowings
   let loanRowsHtml = '';
-  loans.forEach(loan => {
-    const spentPercentage = 0; // We can show monthly EMIs
+  loanExpenseEntries.forEach(loan => {
     loanRowsHtml += `
       <tr>
-        <td><strong>🏦 ${loan.name}</strong></td>
+        <td><strong>${loan.name}</strong></td>
         <td class="num">${formatCurrency(loan.principal)}</td>
         <td class="num">${loan.annual_rate}%</td>
         <td class="num">${loan.tenure_months} Mo.</td>
         <td class="num font-red"><strong>${formatCurrency(loan.monthly_emi)} / mo</strong></td>
-        <td><span class="status-badge status-ok">Active EMI</span></td>
+        <td><span class="status-badge status-over">Active Liability</span></td>
       </tr>
     `;
   });
 
-  if (loans.length === 0) {
-    loanRowsHtml = `<tr><td colspan="6" style="text-align: center; color: #8E8E93; padding: 20px;">No active loans or installments logged.</td></tr>`;
+  if (loanExpenseEntries.length === 0) {
+    loanRowsHtml = `<tr><td colspan="6" style="text-align: center; color: #8E8E93; padding: 20px;">No active loans or borrowings logged.</td></tr>`;
+  }
+
+  // 2b. Process Deposits and Investments
+  let investmentRowsHtml = '';
+  loanIncomeEntries.forEach(inv => {
+    investmentRowsHtml += `
+      <tr>
+        <td><strong>${inv.name}</strong></td>
+        <td class="num">${formatCurrency(inv.principal)}</td>
+        <td class="num">${inv.annual_rate}%</td>
+        <td class="num">${inv.tenure_months} Mo.</td>
+        <td class="num font-green"><strong>${formatCurrency(inv.monthly_emi)} / mo</strong></td>
+        <td><span class="status-badge status-ok">Active Return</span></td>
+      </tr>
+    `;
+  });
+
+  if (loanIncomeEntries.length === 0) {
+    investmentRowsHtml = `<tr><td colspan="6" style="text-align: center; color: #8E8E93; padding: 20px;">No active deposits or investments logged.</td></tr>`;
   }
 
   // 3. Process Debts list
@@ -142,7 +139,7 @@ export async function generateBudgetReportPDF(data: PDFReportData): Promise<void
     const outstanding = debt.principal - debt.payment_progress;
     debtRowsHtml += `
       <tr>
-        <td><strong>${debt.type === 'lending' ? '🤝 Lent to' : '💸 Borrowed from'} ${debt.contact_name}</strong></td>
+        <td><strong>${debt.type === 'lending' ? 'Lent to' : 'Borrowed from'} ${debt.contact_name}</strong></td>
         <td><span class="status-badge ${debt.type === 'lending' ? 'status-ok' : 'status-warning'}">${debt.type === 'lending' ? 'Receivable' : 'Liability'}</span></td>
         <td class="num">${formatCurrency(debt.principal)}</td>
         <td class="num font-green">${formatCurrency(debt.payment_progress)}</td>
@@ -167,7 +164,7 @@ export async function generateBudgetReportPDF(data: PDFReportData): Promise<void
     txRowsHtml += `
       <tr>
         <td>${txDate}</td>
-        <td><strong>${getEmoji(tx.category)} ${tx.category}</strong></td>
+        <td><strong>${tx.category}</strong></td>
         <td><span class="status-badge ${tx.type === 'income' ? 'status-ok' : 'status-no-limit'}">${tx.type.toUpperCase()}</span></td>
         <td>${tx.account}</td>
         <td style="color: #6C6C72;">${tx.note || '—'}</td>
@@ -187,7 +184,7 @@ export async function generateBudgetReportPDF(data: PDFReportData): Promise<void
     <html>
       <head>
         <meta charset="utf-8" />
-        <title>Vault Budget Audit Report - ${monthName}</title>
+        <title>Money Manager Financial Report - ${monthName}</title>
         <style>
           body {
             font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
@@ -204,14 +201,14 @@ export async function generateBudgetReportPDF(data: PDFReportData): Promise<void
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-bottom: 2px solid #0A84FF;
+            border-bottom: 2px solid #1FA89B;
             padding-bottom: 20px;
             margin-bottom: 30px;
           }
           .brand-title {
             font-size: 24px;
             font-weight: 800;
-            color: #0A0A0C;
+            color: #1FA89B;
             letter-spacing: -1px;
             margin: 0;
           }
@@ -230,7 +227,7 @@ export async function generateBudgetReportPDF(data: PDFReportData): Promise<void
             font-size: 16px;
             font-weight: 700;
             margin: 0 0 5px 0;
-            color: #0A84FF;
+            color: #1FA89B;
           }
           .report-meta p {
             margin: 2px 0;
@@ -265,7 +262,7 @@ export async function generateBudgetReportPDF(data: PDFReportData): Promise<void
             font-weight: 700;
             color: #1C1C1E;
           }
-          .kpi-border-blue { border-left: 4px solid #0A84FF; }
+          .kpi-border-blue { border-left: 4px solid #1FA89B; }
           .kpi-border-red { border-left: 4px solid #FF453A; }
           .kpi-border-green { border-left: 4px solid #30D158; }
           .kpi-border-orange { border-left: 4px solid #FF9500; }
@@ -312,7 +309,7 @@ export async function generateBudgetReportPDF(data: PDFReportData): Promise<void
           /* Color Helpers */
           .font-green { color: #30D158; }
           .font-red { color: #FF453A; }
-          .font-blue { color: #0A84FF; }
+          .font-blue { color: #1FA89B; }
           
           /* Badges */
           .status-badge {
@@ -355,11 +352,11 @@ export async function generateBudgetReportPDF(data: PDFReportData): Promise<void
         <!-- Header -->
         <div class="report-header">
           <div>
-            <h2 class="brand-title">🌌 FINANCIAL VAULT</h2>
-            <p class="brand-subtitle">Offline-First Private Ledger System</p>
+            <h2 class="brand-title">MONEY MANAGER</h2>
+            <p class="brand-subtitle">Personal Wealth & Capital Ledger</p>
           </div>
           <div class="report-meta">
-            <h1>Monthly Financial Audit</h1>
+            <h1>Monthly Financial Report</h1>
             <p><strong>Reporting Cycle:</strong> ${monthName}</p>
             <p><strong>Account Profile:</strong> ${userEmail}</p>
             <p><strong>Report ID:</strong> RPT-${Date.now().toString().slice(-6)}</p>
@@ -405,7 +402,7 @@ export async function generateBudgetReportPDF(data: PDFReportData): Promise<void
         </table>
 
         <!-- Active Installment Loans -->
-        <h2 class="section-title">Active Fixed Loans & Installment Plans</h2>
+        <h2 class="section-title">Loans & Borrowings</h2>
         <table>
           <thead>
             <tr>
@@ -419,6 +416,24 @@ export async function generateBudgetReportPDF(data: PDFReportData): Promise<void
           </thead>
           <tbody>
             ${loanRowsHtml}
+          </tbody>
+        </table>
+
+        <!-- Active Deposits & Investments -->
+        <h2 class="section-title">Deposits & Investments</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Investment Description</th>
+              <th class="num">Principal Amount</th>
+              <th class="num">Annual Rate (ROI)</th>
+              <th class="num">Term (Months)</th>
+              <th class="num">Monthly Return Inflow</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${investmentRowsHtml}
           </tbody>
         </table>
 
@@ -460,8 +475,8 @@ export async function generateBudgetReportPDF(data: PDFReportData): Promise<void
 
         <!-- Footer -->
         <div class="report-footer">
-          <p>This document is generated by Antigravity Financial Engine on ${new Date().toLocaleString()}.</p>
-          <p>© 2026 Financial Vault App. Encrypted Local Ledger Vault. Confidential.</p>
+          <p>This report was generated by Money Manager on ${new Date().toLocaleString()}.</p>
+          <p>© 2026 Money Manager. Confidential Personal Ledger.</p>
         </div>
       </body>
     </html>
@@ -475,7 +490,7 @@ export async function generateBudgetReportPDF(data: PDFReportData): Promise<void
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, {
           mimeType: 'application/pdf',
-          dialogTitle: `Financial Vault Audit Report - ${monthName}`,
+          dialogTitle: `Money Manager Financial Report - ${monthName}`,
           UTI: 'com.adobe.pdf',
         });
       } else {
