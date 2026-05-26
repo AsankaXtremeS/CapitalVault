@@ -1,4 +1,5 @@
 import { useLocalStore } from "@/hooks/useLocalStore";
+import AnimatedScreenWrapper from "@/components/AnimatedScreenWrapper";
 import { generateBudgetReportPDF } from "@/utils/pdfGenerator";
 import * as Haptics from "expo-haptics";
 import {
@@ -260,7 +261,8 @@ export default function BudgetScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <AnimatedScreenWrapper>
+      <View style={styles.container}>
       {/* Top Period Header Row switcher */}
       <View style={styles.topPeriodHeader}>
         <View style={styles.periodSelector}>
@@ -950,6 +952,7 @@ export default function BudgetScreen() {
         </View>
       </Modal>
     </View>
+    </AnimatedScreenWrapper>
   );
 }
 

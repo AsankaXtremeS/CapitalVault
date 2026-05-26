@@ -24,6 +24,7 @@ import {
 import * as Haptics from 'expo-haptics';
 import { useLocalStore, Debt } from '@/hooks/useLocalStore';
 import WhatsAppReminder from '@/components/WhatsAppReminder';
+import AnimatedScreenWrapper from '@/components/AnimatedScreenWrapper';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -113,7 +114,8 @@ export default function DebtsLedger() {
   };
 
   return (
-    <View style={styles.container}>
+    <AnimatedScreenWrapper>
+      <View style={styles.container}>
       {/* Tab Row (Lending vs Borrowing) */}
       <View style={styles.tabRow}>
         <TouchableOpacity 
@@ -416,6 +418,7 @@ export default function DebtsLedger() {
         </View>
       </Modal>
     </View>
+    </AnimatedScreenWrapper>
   );
 }
 

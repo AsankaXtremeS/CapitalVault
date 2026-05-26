@@ -1,4 +1,5 @@
 import { useLocalStore } from "@/hooks/useLocalStore";
+import AnimatedScreenWrapper from "@/components/AnimatedScreenWrapper";
 import {
   calculateEMI,
   generateAmortizationSchedule,
@@ -116,7 +117,8 @@ export default function LoansLedger() {
   };
 
   return (
-    <View style={styles.container}>
+    <AnimatedScreenWrapper>
+      <View style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.screenTitle}>Loans & Investments</Text>
         <Text style={styles.screenSubtitle}>
@@ -557,6 +559,7 @@ export default function LoansLedger() {
         </View>
       </Modal>
     </View>
+    </AnimatedScreenWrapper>
   );
 }
 

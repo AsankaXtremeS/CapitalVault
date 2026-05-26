@@ -11,6 +11,7 @@ import {
   Alert,
   Dimensions
 } from 'react-native';
+import AnimatedScreenWrapper from '@/components/AnimatedScreenWrapper';
 import { 
   Plus, 
   ChevronLeft, 
@@ -605,7 +606,8 @@ export default function DailyLedger() {
   const pickerMonthName = pickerMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
   return (
-    <View style={styles.container}>
+    <AnimatedScreenWrapper>
+      <View style={styles.container}>
       {/* Top Period Header Row switcher */}
       <View style={styles.topPeriodHeader}>
         <View style={styles.periodSelector}>
@@ -1657,6 +1659,7 @@ export default function DailyLedger() {
         </View>
       </Modal>
     </View>
+    </AnimatedScreenWrapper>
   );
 }
 

@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, SlidersHorizontal } from 'lucide-react-nativ
 import Svg, { Path, G, Line, Circle, Text as SvgText } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import { useLocalStore } from '@/hooks/useLocalStore';
+import AnimatedScreenWrapper from '@/components/AnimatedScreenWrapper';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -162,7 +163,8 @@ export default function StatsView() {
   const activeWedge = wedges.find((w) => w.isActive);
 
   return (
-    <View style={styles.container}>
+    <AnimatedScreenWrapper>
+      <View style={styles.container}>
       {/* Header Selector */}
       <View style={styles.header}>
         <View style={styles.monthSelector}>
@@ -332,6 +334,7 @@ export default function StatsView() {
         </View>
       </ScrollView>
     </View>
+    </AnimatedScreenWrapper>
   );
 }
 
