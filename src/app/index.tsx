@@ -25,7 +25,17 @@ import {
   CheckCircle2,
   Trash2,
   Bookmark,
-  Star
+  Star,
+  Cloud,
+  Wifi,
+  WifiOff,
+  User,
+  Lock,
+  Mail,
+  RefreshCw,
+  LogOut,
+  Database,
+  AlertTriangle
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
@@ -87,6 +97,20 @@ export default function DailyLedger() {
     deleteTransaction,
     isSyncing, 
     isOnline, 
+    isCellular,
+    user,
+    syncOnMobileData,
+    autoCloudSync,
+    lastSyncedAt,
+    signUp,
+    signIn,
+    signOut,
+    resetPassword,
+    recoverDataFromCloud,
+    simulateAppReset,
+    toggleSyncOnMobileData,
+    toggleAutoCloudSync,
+    loadCloudSyncSettings,
     triggerCloudSync,
     calculatorPipeValue,
     clearPipeValue,
@@ -116,6 +140,142 @@ export default function DailyLedger() {
   const [showAccountGrid, setShowAccountGrid] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
+  
+  // Cloud Backup and Sync States
+  const [cloudModalVisible, setCloudModalVisible] = useState(false);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [isSignUpMode, setIsSignUpMode] = useState(false);
+  const [forgotPasswordMode, setForgotPasswordMode] = useState(false);
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
+  const [newPasswordForMock, setNewPasswordForMock] = useState('');
+  const [isMockPasswordResetVisible, setIsMockPasswordResetVisible] = useState(false);
+  
+  const [authLoading, setAuthLoading] = useState(false);
+  const [syncLoading, setSyncLoading] = useState(false);
+  const [restoreLoading, setRestoreLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authSuccess, setAuthSuccess] = useState<string | null>(null);
+
+  // Load Cloud Sync settings on mount
+  useEffect(() => {
+    loadCloudSyncSettings();
+  }, []);
+
+  const handleAuthSubmit = async () => {
+    if (!authEmail.trim() || !authPassword.trim()) {
+      setAuthError('Please fill in all fields.');
+      return;
+    }
+    setAuthLoading(true);
+    setAuthError(null);
+    setAuthSuccess(null);
+    try {
+      if (isSignUpMode) {
+        await signUp(authEmail.trim(), authPassword.trim());
+        setAuthSuccess('Account registered and backed up successfully!');
+      } else {
+        await signIn(authEmail.trim(), authPassword.trim());
+        setAuthSuccess('Signed in successfully! Data syncing...');
+      }
+    } catch (e: any) {
+      setAuthError(e.message || 'Authentication failed.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleForgotPasswordSubmit = async () => {
+    if (!forgotPasswordEmail.trim()) {
+      setAuthError('Please enter your email.');
+      return;
+    }
+    setAuthLoading(true);
+    setAuthError(null);
+    setAuthSuccess(null);
+    try {
+      const result = await resetPassword(forgotPasswordEmail.trim());
+      if (result === 'link_sent') {
+        setAuthSuccess('Password reset link sent to your email.');
+        setTimeout(() => setForgotPasswordMode(false), 3000);
+      } else if (result === 'mock_email_found') {
+        setIsMockPasswordResetVisible(true);
+        setAuthSuccess('Demo Account Found! Please set your new password below.');
+      }
+    } catch (e: any) {
+      setAuthError(e.message || 'Password reset request failed.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleMockPasswordResetSubmit = async () => {
+    if (!newPasswordForMock.trim()) {
+      setAuthError('Please enter a new password.');
+      return;
+    }
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      await resetPassword(forgotPasswordEmail.trim(), newPasswordForMock.trim());
+      setAuthSuccess('Simulated password reset successfully! You can now log in.');
+      setIsMockPasswordResetVisible(false);
+      setTimeout(() => {
+        setForgotPasswordMode(false);
+        setAuthEmail(forgotPasswordEmail);
+        setAuthPassword(newPasswordForMock);
+        setIsSignUpMode(false);
+        setAuthSuccess(null);
+      }, 2500);
+    } catch (e: any) {
+      setAuthError(e.message || 'Reset failed.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleRestoreData = () => {
+    Alert.alert(
+      'Recover Backup',
+      'This will completely replace all transactions, debts, and custom categories in this app with your cloud backup. This cannot be undone! Proceed?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Restore',
+          style: 'destructive',
+          onPress: async () => {
+            setRestoreLoading(true);
+            try {
+              await recoverDataFromCloud();
+              Alert.alert('Success', 'Your local database was recovered successfully!');
+            } catch (e: any) {
+              Alert.alert('Failure', e.message || 'Backup recovery failed.');
+            } finally {
+              setRestoreLoading(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleSimulateReset = () => {
+    Alert.alert(
+      'Simulate Clean Reinstall',
+      'This will wipe all active local SQLite records, categories, and memory as if you just uninstalled and reinstalled the app. Your simulated cloud backup is kept safe in SecureStore so you can test recovery! Proceed?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset App',
+          style: 'destructive',
+          onPress: async () => {
+            await simulateAppReset();
+            Alert.alert('Reset Successful', 'App data is wiped. You are now logged out of a blank app. Log in to recover!');
+          }
+        }
+      ]
+    );
+  };
 
   // Custom Category Form States
   const [showCustomCatModal, setShowCustomCatModal] = useState(false);
@@ -459,6 +619,22 @@ export default function DailyLedger() {
           </TouchableOpacity>
         </View>
         <View style={styles.headerIcons}>
+          {/* Cloud Sync Status Indicator & Dashboard trigger */}
+          <TouchableOpacity 
+            style={styles.headerIconBtn}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              setCloudModalVisible(true);
+              setAuthError(null);
+              setAuthSuccess(null);
+            }}
+          >
+            <CloudLightning 
+              color={user ? (isSyncing ? '#FF9500' : '#34C759') : '#8E8E93'} 
+              size={20} 
+            />
+          </TouchableOpacity>
+
           <TouchableOpacity style={styles.headerIconBtn}>
             <Star color="#8E8E93" size={20} />
           </TouchableOpacity>
@@ -1194,6 +1370,314 @@ export default function DailyLedger() {
                 <Text style={styles.catCreateBtnText}>Create</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Cloud Backup & Sync Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={cloudModalVisible}
+        onRequestClose={() => setCloudModalVisible(false)}
+      >
+        <View style={styles.cloudModalBackdrop}>
+          <View style={styles.cloudModalContent}>
+            
+            {/* Header */}
+            <View style={styles.cloudModalHeader}>
+              <View style={styles.cloudModalHeaderTitleRow}>
+                <Cloud color="#0A84FF" size={24} style={{ marginRight: 8 }} />
+                <Text style={styles.cloudModalTitle}>Cloud Vault Sync</Text>
+              </View>
+              <TouchableOpacity 
+                style={styles.cloudCloseBtn} 
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setCloudModalVisible(false);
+                }}
+              >
+                <Text style={styles.cloudCloseBtnText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+
+            {authError && (
+              <View style={styles.cloudAlertError}>
+                <AlertTriangle color="#FF453A" size={16} style={{ marginRight: 8 }} />
+                <Text style={styles.cloudAlertText}>{authError}</Text>
+              </View>
+            )}
+
+            {authSuccess && (
+              <View style={styles.cloudAlertSuccess}>
+                <CheckCircle2 color="#34C759" size={16} style={{ marginRight: 8 }} />
+                <Text style={styles.cloudAlertText}>{authSuccess}</Text>
+              </View>
+            )}
+
+            <ScrollView contentContainerStyle={styles.cloudScrollContent}>
+              
+              {!user ? (
+                // ==========================================
+                // AUTHENTICATION VIEW (Signed Out)
+                // ==========================================
+                <View style={styles.authContainer}>
+                  <Text style={styles.authIntroText}>
+                    {forgotPasswordMode 
+                      ? "Enter your account email to request a secure password reset link or update simulated passwords."
+                      : "Synchronize your transactions, lending ledger, and custom categories to secure cloud storage."
+                    }
+                  </Text>
+
+                  {forgotPasswordMode ? (
+                    // FORGOT PASSWORD FORM
+                    <View style={styles.authForm}>
+                      <View style={styles.authInputContainer}>
+                        <Mail color="#8E8E93" size={16} style={styles.authInputIcon} />
+                        <TextInput
+                          placeholder="Email Address"
+                          placeholderTextColor="#8E8E93"
+                          style={styles.authTextInput}
+                          autoCapitalize="none"
+                          keyboardType="email-address"
+                          value={forgotPasswordEmail}
+                          onChangeText={setForgotPasswordEmail}
+                        />
+                      </View>
+
+                      {isMockPasswordResetVisible && (
+                        <View style={styles.authInputContainer}>
+                          <Lock color="#8E8E93" size={16} style={styles.authInputIcon} />
+                          <TextInput
+                            placeholder="Enter New Password (Demo Mode)"
+                            placeholderTextColor="#8E8E93"
+                            style={styles.authTextInput}
+                            secureTextEntry={true}
+                            value={newPasswordForMock}
+                            onChangeText={setNewPasswordForMock}
+                          />
+                        </View>
+                      )}
+
+                      <TouchableOpacity 
+                        style={styles.authSubmitBtn} 
+                        onPress={isMockPasswordResetVisible ? handleMockPasswordResetSubmit : handleForgotPasswordSubmit}
+                        disabled={authLoading}
+                      >
+                        <Text style={styles.authSubmitBtnText}>
+                          {authLoading ? 'Processing...' : (isMockPasswordResetVisible ? 'Save Password' : 'Send Reset Link')}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity 
+                        style={styles.authSwitchBtn}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setForgotPasswordMode(false);
+                          setIsMockPasswordResetVisible(false);
+                          setAuthError(null);
+                        }}
+                      >
+                        <Text style={styles.authSwitchBtnText}>Back to Sign In</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    // SIGN IN / SIGN UP FORM
+                    <View style={styles.authForm}>
+                      <View style={styles.authInputContainer}>
+                        <Mail color="#8E8E93" size={16} style={styles.authInputIcon} />
+                        <TextInput
+                          placeholder="Email Address"
+                          placeholderTextColor="#8E8E93"
+                          style={styles.authTextInput}
+                          autoCapitalize="none"
+                          keyboardType="email-address"
+                          value={authEmail}
+                          onChangeText={setAuthEmail}
+                        />
+                      </View>
+
+                      <View style={styles.authInputContainer}>
+                        <Lock color="#8E8E93" size={16} style={styles.authInputIcon} />
+                        <TextInput
+                          placeholder="Password"
+                          placeholderTextColor="#8E8E93"
+                          style={styles.authTextInput}
+                          secureTextEntry={true}
+                          value={authPassword}
+                          onChangeText={setAuthPassword}
+                        />
+                      </View>
+
+                      <TouchableOpacity 
+                        style={styles.authSubmitBtn} 
+                        onPress={handleAuthSubmit}
+                        disabled={authLoading}
+                      >
+                        <Text style={styles.authSubmitBtnText}>
+                          {authLoading ? 'Verifying...' : (isSignUpMode ? 'Register New Account' : 'Sign In')}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <View style={styles.authActionsRow}>
+                        <TouchableOpacity 
+                          onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            setIsSignUpMode(!isSignUpMode);
+                            setAuthError(null);
+                          }}
+                        >
+                          <Text style={styles.authActionLink}>
+                            {isSignUpMode ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
+                          </Text>
+                        </TouchableOpacity>
+
+                        {!isSignUpMode && (
+                          <TouchableOpacity 
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              setForgotPasswordMode(true);
+                              setForgotPasswordEmail(authEmail);
+                              setAuthError(null);
+                            }}
+                          >
+                            <Text style={styles.authActionLink}>Forgot Password?</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                  )}
+                </View>
+              ) : (
+                // ==========================================
+                // CLOUD DASHBOARD VIEW (Signed In)
+                // ==========================================
+                <View style={styles.dashboardContainer}>
+                  
+                  {/* Account Card */}
+                  <View style={styles.dashboardAccountCard}>
+                    <User color="#0A84FF" size={24} style={styles.accountIcon} />
+                    <View style={styles.accountMeta}>
+                      <Text style={styles.accountUserEmail}>{user.email}</Text>
+                      <Text style={styles.accountUserId}>Cloud ID: {user.id.substring(0, 15)}...</Text>
+                    </View>
+                    <TouchableOpacity style={styles.signOutBtn} onPress={signOut}>
+                      <LogOut color="#FF453A" size={18} />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Connection Stats Grid */}
+                  <View style={styles.statsCardGrid}>
+                    <View style={styles.statsCardCell}>
+                      <Text style={styles.statsCardLabel}>Connectivity</Text>
+                      <View style={styles.connectivityBadge}>
+                        <View style={[styles.statusDot, isOnline ? styles.statusDotGreen : styles.statusDotRed]} />
+                        <Text style={styles.statsCardValue}>
+                          {isOnline ? (isCellular ? 'Mobile Data' : 'Wi-Fi') : 'Offline'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.statsCardCell}>
+                      <Text style={styles.statsCardLabel}>Sync Queue</Text>
+                      <Text style={[styles.statsCardValue, transactions.filter(t => t.sync_status === 'pending').length > 0 ? styles.orangeText : styles.greenText]}>
+                        {transactions.filter(t => t.sync_status === 'pending').length} Pending
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.syncDetailsRow}>
+                    <Text style={styles.syncDetailsLabel}>Last Backup:</Text>
+                    <Text style={styles.syncDetailsValue}>{lastSyncedAt || 'Never'}</Text>
+                  </View>
+
+                  {/* Settings Switches */}
+                  <View style={styles.settingsSection}>
+                    <Text style={styles.settingsSectionTitle}>Backup Preferences</Text>
+                    
+                    <View style={styles.settingSwitchRow}>
+                      <View style={styles.settingSwitchMeta}>
+                        <Text style={styles.settingSwitchTitle}>Automatic Sync</Text>
+                        <Text style={styles.settingSwitchDesc}>Save creations to cloud instantly</Text>
+                      </View>
+                      <TouchableOpacity 
+                        style={[styles.switchTrack, autoCloudSync ? styles.switchTrackActive : styles.switchTrackInactive]}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          toggleAutoCloudSync(!autoCloudSync);
+                        }}
+                      >
+                        <View style={[styles.switchThumb, autoCloudSync ? styles.switchThumbActive : styles.switchThumbInactive]} />
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.settingSwitchRow}>
+                      <View style={styles.settingSwitchMeta}>
+                        <Text style={styles.settingSwitchTitle}>Sync on Mobile Data</Text>
+                        <Text style={styles.settingSwitchDesc}>Allow synchronization over cellular</Text>
+                      </View>
+                      <TouchableOpacity 
+                        style={[styles.switchTrack, syncOnMobileData ? styles.switchTrackActive : styles.switchTrackInactive]}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          toggleSyncOnMobileData(!syncOnMobileData);
+                        }}
+                      >
+                        <View style={[styles.switchThumb, syncOnMobileData ? styles.switchThumbActive : styles.switchThumbInactive]} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Actions Section */}
+                  <View style={styles.dashboardActions}>
+                    
+                    <TouchableOpacity 
+                      style={[styles.dashboardActionBtn, styles.backupBtn]} 
+                      onPress={async () => {
+                        setSyncLoading(true);
+                        try {
+                          await triggerCloudSync(true); // force sync
+                        } finally {
+                          setSyncLoading(false);
+                        }
+                      }}
+                      disabled={syncLoading || !isOnline}
+                    >
+                      <RefreshCw color="#FFFFFF" size={14} style={{ marginRight: 8 }} />
+                      <Text style={styles.dashboardActionBtnText}>
+                        {syncLoading ? 'Syncing...' : 'Backup Local Vault'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity 
+                      style={[styles.dashboardActionBtn, styles.restoreBtn]} 
+                      onPress={handleRestoreData}
+                      disabled={restoreLoading}
+                    >
+                      <Database color="#FFFFFF" size={14} style={{ marginRight: 8 }} />
+                      <Text style={styles.dashboardActionBtnText}>
+                        {restoreLoading ? 'Restoring...' : 'Recover Cloud Backup'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* Simulation reset button for testing reinstall */}
+                    <TouchableOpacity 
+                      style={[styles.dashboardActionBtn, styles.resetAppBtn]} 
+                      onPress={handleSimulateReset}
+                    >
+                      <Trash2 color="#FFFFFF" size={14} style={{ marginRight: 8 }} />
+                      <Text style={styles.dashboardActionBtnText}>
+                        Simulate Clean Install (Reset App)
+                      </Text>
+                    </TouchableOpacity>
+
+                  </View>
+
+                </View>
+              )}
+
+            </ScrollView>
+
           </View>
         </View>
       </Modal>
@@ -2140,5 +2624,363 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'flex-end',
     paddingRight: 4,
+  },
+
+  // ==========================================
+  // CLOUD BACKUP & SYNC STYLING
+  // ==========================================
+  cloudModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    justifyContent: 'flex-end',
+  },
+  cloudModalContent: {
+    backgroundColor: '#1C1C1E',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    height: SCREEN_HEIGHT * 0.85,
+    paddingTop: 16,
+    borderWidth: 1.5,
+    borderColor: '#2C2C2E',
+  },
+  cloudModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#2C2C2E',
+  },
+  cloudModalHeaderTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  cloudModalTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  cloudCloseBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: '#2C2C2E',
+    borderRadius: 14,
+  },
+  cloudCloseBtnText: {
+    color: '#8E8E93',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  cloudScrollContent: {
+    padding: 20,
+  },
+  cloudAlertError: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 69, 58, 0.15)',
+    padding: 12,
+    marginHorizontal: 20,
+    marginTop: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 69, 58, 0.3)',
+  },
+  cloudAlertSuccess: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(52, 199, 89, 0.15)',
+    padding: 12,
+    marginHorizontal: 20,
+    marginTop: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(52, 199, 89, 0.3)',
+  },
+  cloudAlertText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '500',
+    flex: 1,
+  },
+
+  // Auth Styles
+  authContainer: {
+    paddingTop: 8,
+  },
+  authIntroText: {
+    color: '#8E8E93',
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginBottom: 24,
+    paddingHorizontal: 10,
+  },
+  authForm: {
+    width: '100%',
+  },
+  authInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2C2C2E',
+    borderRadius: 10,
+    height: 48,
+    marginBottom: 14,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: '#3A3A3C',
+  },
+  authInputIcon: {
+    marginRight: 10,
+  },
+  authTextInput: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    flex: 1,
+    height: '100%',
+  },
+  authSubmitBtn: {
+    backgroundColor: '#0A84FF',
+    borderRadius: 10,
+    height: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  authSubmitBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  authSwitchBtn: {
+    height: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  authSwitchBtnText: {
+    color: '#0A84FF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  authActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    paddingHorizontal: 4,
+  },
+  authActionLink: {
+    color: '#8E8E93',
+    fontSize: 12,
+    fontWeight: '500',
+    textDecorationLine: 'underline',
+  },
+
+  // Dashboard Styles
+  dashboardContainer: {
+    paddingTop: 4,
+  },
+  dashboardAccountCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2C2C2E',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#3A3A3C',
+    marginBottom: 20,
+  },
+  accountIcon: {
+    marginRight: 12,
+  },
+  accountMeta: {
+    flex: 1,
+  },
+  accountUserEmail: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  accountUserId: {
+    color: '#8E8E93',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  signOutBtn: {
+    padding: 8,
+    backgroundColor: 'rgba(255, 69, 58, 0.1)',
+    borderRadius: 8,
+  },
+  statsCardGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  statsCardCell: {
+    flex: 1,
+    backgroundColor: '#2C2C2E',
+    borderRadius: 10,
+    padding: 12,
+    marginHorizontal: 4,
+    borderWidth: 1,
+    borderColor: '#3A3A3C',
+  },
+  statsCardLabel: {
+    color: '#8E8E93',
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  statsCardValue: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  connectivityBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  statusDotGreen: {
+    backgroundColor: '#34C759',
+  },
+  statusDotRed: {
+    backgroundColor: '#FF453A',
+  },
+  syncDetailsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    paddingBottom: 16,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#2C2C2E',
+    marginBottom: 20,
+  },
+  syncDetailsLabel: {
+    color: '#8E8E93',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  syncDetailsValue: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
+  // Preferences Section
+  settingsSection: {
+    marginBottom: 24,
+  },
+  settingsSectionTitle: {
+    color: '#8E8E93',
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  settingSwitchRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#2C2C2E',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#3A3A3C',
+    marginBottom: 10,
+  },
+  settingSwitchMeta: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  settingSwitchTitle: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  settingSwitchDesc: {
+    color: '#8E8E93',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  switchTrack: {
+    width: 48,
+    height: 26,
+    borderRadius: 13,
+    padding: 2,
+    justifyContent: 'center',
+  },
+  switchTrackActive: {
+    backgroundColor: '#34C759',
+  },
+  switchTrackInactive: {
+    backgroundColor: '#3A3A3C',
+  },
+  switchThumb: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.41,
+    elevation: 2,
+  },
+  switchThumbActive: {
+    alignSelf: 'flex-end',
+  },
+  switchThumbInactive: {
+    alignSelf: 'flex-start',
+  },
+
+  // Dashboard Actions
+  dashboardActions: {
+    marginTop: 4,
+  },
+  dashboardActionBtn: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: 44,
+    borderRadius: 10,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.18,
+    shadowRadius: 1.0,
+    elevation: 1,
+  },
+  backupBtn: {
+    backgroundColor: '#0A84FF',
+  },
+  restoreBtn: {
+    backgroundColor: '#34C759',
+  },
+  resetAppBtn: {
+    backgroundColor: '#FF453A',
+  },
+  dashboardActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  orangeText: {
+    color: '#FF9500',
+  },
+  greenText: {
+    color: '#34C759',
   },
 });
