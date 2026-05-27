@@ -11,12 +11,14 @@ import {
   Alert,
   Dimensions
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import AnimatedScreenWrapper from '@/components/AnimatedScreenWrapper';
 import { 
   Plus, 
   ChevronLeft, 
   ChevronRight, 
-  Search, 
+  Search,
+  Settings,
   SlidersHorizontal,
   Camera, 
   Calendar as CalendarIcon, 
@@ -119,8 +121,12 @@ export default function DailyLedger() {
     customCategories,
     addCustomCategory,
     importantNotes,
-    updateImportantNotes
+    updateImportantNotes,
+    simulatedCloud,
+    currencySymbol
   } = useLocalStore();
+
+  const router = useRouter();
 
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
@@ -641,6 +647,17 @@ export default function DailyLedger() {
             />
           </TouchableOpacity>
 
+          {/* Settings Menu Button */}
+          <TouchableOpacity 
+            style={styles.headerIconBtn}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/settings');
+            }}
+          >
+            <Settings color="#8E8E93" size={20} />
+          </TouchableOpacity>
+
           {/* Dynamic Search Toggle Button */}
           <TouchableOpacity 
             style={styles.headerIconBtn}
@@ -680,21 +697,21 @@ export default function DailyLedger() {
         <View style={styles.balanceCard}>
           <Text style={styles.balanceCardTitle}>Active Balance</Text>
           <Text style={styles.balanceCardAmount}>
-            ${totalNet.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {currencySymbol} {totalNet.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </Text>
           
           <View style={styles.balanceCardRow}>
             <View style={styles.balanceCardHalf}>
               <Text style={styles.balanceCardSubLabel}>Income</Text>
               <Text style={[styles.balanceCardValueText, styles.lightBlueText]}>
-                +${totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                +{currencySymbol} {totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </Text>
             </View>
             <View style={styles.balanceCardSeparator} />
             <View style={styles.balanceCardHalf}>
               <Text style={styles.balanceCardSubLabel}>Expenses</Text>
               <Text style={[styles.balanceCardValueText, styles.lightRedText]}>
-                -${totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                -{currencySymbol} {totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </Text>
             </View>
           </View>
@@ -766,7 +783,7 @@ export default function DailyLedger() {
 
                 <View style={styles.txRightAmountContainer}>
                   <Text style={[styles.txAmountText, tx.type === 'income' ? styles.incomeText : styles.expenseText]}>
-                    {tx.type === 'income' ? '+' : '-'}${tx.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {tx.type === 'income' ? '+' : '-'}{currencySymbol} {tx.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -797,12 +814,12 @@ export default function DailyLedger() {
                     <View style={styles.dayTotals}>
                       {dayIncome > 0 && (
                         <Text style={styles.dayIncomeVal}>
-                          +${dayIncome.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                          +{currencySymbol} {dayIncome.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                         </Text>
                       )}
                       {dayExpense > 0 && (
                         <Text style={styles.dayExpenseVal}>
-                          -${dayExpense.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                          -{currencySymbol} {dayExpense.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                         </Text>
                       )}
                     </View>
@@ -837,7 +854,7 @@ export default function DailyLedger() {
 
                       <View style={styles.txRightAmountContainer}>
                         <Text style={[styles.txAmountText, tx.type === 'income' ? styles.incomeText : styles.expenseText]}>
-                          {tx.type === 'income' ? '+' : '-'}${tx.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {tx.type === 'income' ? '+' : '-'}{currencySymbol} {tx.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </Text>
                       </View>
                     </TouchableOpacity>
@@ -903,19 +920,19 @@ export default function DailyLedger() {
 
                       {income > 0 && (
                         <Text numberOfLines={1} style={styles.cellIncome}>
-                          +${Math.round(income)}
+                          +{currencySymbol} {Math.round(income)}
                         </Text>
                       )}
 
                       {expense > 0 && (
                         <Text numberOfLines={1} style={styles.cellExpense}>
-                          -${Math.round(expense)}
+                          -{currencySymbol} {Math.round(expense)}
                         </Text>
                       )}
 
                       {(income > 0 || expense > 0) && (
                         <Text numberOfLines={1} style={styles.cellNet}>
-                          {net >= 0 ? '+' : ''}${Math.round(net)}
+                          {net >= 0 ? '+' : ''}{currencySymbol} {Math.round(net)}
                         </Text>
                       )}
                     </View>
@@ -935,13 +952,13 @@ export default function DailyLedger() {
             <View style={[styles.analyticsStatsCell, { borderColor: '#0A84FF' }]}>
               <Text style={styles.analyticsStatsLabel}>Total Income</Text>
               <Text style={[styles.analyticsStatsValue, styles.blueText]}>
-                +${totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                +{currencySymbol} {totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </Text>
             </View>
             <View style={[styles.analyticsStatsCell, { borderColor: '#FF453A' }]}>
               <Text style={styles.analyticsStatsLabel}>Total Expenses</Text>
               <Text style={[styles.analyticsStatsValue, styles.redText]}>
-                -${totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                -{currencySymbol} {totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </Text>
             </View>
           </View>
@@ -960,16 +977,16 @@ export default function DailyLedger() {
                     {getCategoryEmoji(item.name)} {item.name}
                   </Text>
                   <Text style={[styles.categoryTotalsAmount, item.net >= 0 ? styles.incomeText : styles.expenseText]}>
-                    {item.net >= 0 ? '+' : ''}${item.net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {item.net >= 0 ? '+' : ''}{currencySymbol} {item.net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </Text>
                 </View>
                 <View style={styles.categoryTotalsProgressContainer}>
                   <View style={styles.categoryTotalsProgressLabelRow}>
                     <Text style={styles.categoryTotalsProgressText}>
-                      In: <Text style={styles.incomeText}>${item.income.toLocaleString()}</Text>
+                      In: <Text style={styles.incomeText}>{currencySymbol} {item.income.toLocaleString()}</Text>
                     </Text>
                     <Text style={styles.categoryTotalsProgressText}>
-                      Out: <Text style={styles.expenseText}>${item.expense.toLocaleString()}</Text>
+                      Out: <Text style={styles.expenseText}>{currencySymbol} {item.expense.toLocaleString()}</Text>
                     </Text>
                   </View>
                 </View>
@@ -1058,7 +1075,7 @@ export default function DailyLedger() {
 
               {/* Manual Form Inputs */}
               <View style={styles.formItem}>
-                <Text style={styles.formLabel}>Amount ($)</Text>
+                <Text style={styles.formLabel}>Amount ({currencySymbol})</Text>
                 <TouchableOpacity 
                   style={styles.amountSelector}
                   onPress={() => {
@@ -1066,7 +1083,7 @@ export default function DailyLedger() {
                     setIsKeyboardVisible(true);
                   }}
                 >
-                  <Text style={styles.amountSelectorVal}>${amount}</Text>
+                  <Text style={styles.amountSelectorVal}>{currencySymbol} {amount}</Text>
                 </TouchableOpacity>
               </View>
 

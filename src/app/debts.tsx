@@ -29,7 +29,7 @@ import AnimatedScreenWrapper from '@/components/AnimatedScreenWrapper';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function DebtsLedger() {
-  const { debts, addDebt, updateDebt, deleteDebt } = useLocalStore();
+  const { debts, addDebt, updateDebt, deleteDebt, currencySymbol } = useLocalStore();
 
   const [activeTab, setActiveTab] = useState<'lending' | 'borrowing'>('lending');
   const [modalVisible, setModalVisible] = useState(false);
@@ -96,7 +96,7 @@ export default function DebtsLedger() {
 
     const remaining = selectedDebt.principal - selectedDebt.payment_progress;
     if (numRepay > remaining) {
-      Alert.alert('Exceeds Balance', `Maximum allowed repayment is $${remaining.toFixed(2)}`);
+      Alert.alert('Exceeds Balance', `Maximum allowed repayment is ${currencySymbol}${remaining.toFixed(2)}`);
       return;
     }
 
@@ -148,7 +148,7 @@ export default function DebtsLedger() {
             styles.totalsVal, 
             activeTab === 'lending' ? styles.lendingText : styles.borrowingText
           ]}>
-            ${totalOutstanding.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            {currencySymbol} {totalOutstanding.toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </Text>
         </View>
       </View>
@@ -189,7 +189,7 @@ export default function DebtsLedger() {
                       styles.outstandingAmount,
                       activeTab === 'lending' ? styles.lendingText : styles.borrowingText
                     ]}>
-                      ${outstanding.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      {currencySymbol} {outstanding.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                     </Text>
                     <Text style={styles.outstandingLabel}>outstanding</Text>
                   </View>
@@ -199,7 +199,7 @@ export default function DebtsLedger() {
                 <View style={styles.progressSection}>
                   <View style={styles.progressLabels}>
                     <Text style={styles.progressText}>
-                      Repaid: ${debt.payment_progress} of ${debt.principal}
+                      Repaid: {currencySymbol} {debt.payment_progress} of {currencySymbol} {debt.principal}
                     </Text>
                     <Text style={styles.progressPercent}>{Math.round(progressPercent)}%</Text>
                   </View>
@@ -335,7 +335,7 @@ export default function DebtsLedger() {
               </View>
 
               <View style={styles.formItem}>
-                <Text style={styles.formLabel}>Principal Amount ($)</Text>
+                <Text style={styles.formLabel}>Principal Amount ({currencySymbol})</Text>
                 <TextInput
                   placeholder="Amount lent/borrowed"
                   placeholderTextColor="#8E8E93"
@@ -392,7 +392,7 @@ export default function DebtsLedger() {
             </Text>
 
             <TextInput
-              placeholder="Repayment amount ($)"
+              placeholder={`Repayment amount (${currencySymbol})`}
               placeholderTextColor="#8E8E93"
               keyboardType="numeric"
               style={styles.settleInput}

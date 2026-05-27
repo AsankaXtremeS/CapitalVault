@@ -30,7 +30,7 @@ import {
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 export default function LoansLedger() {
-  const { loans, addLoan, deleteLoan } = useLocalStore();
+  const { loans, addLoan, deleteLoan, currencySymbol } = useLocalStore();
 
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedLoanId, setSelectedLoanId] = useState<string | null>(null);
@@ -130,8 +130,7 @@ export default function LoansLedger() {
         <View style={styles.summaryCard}>
           <Text style={styles.summaryLabel}>Total Amount Tracked</Text>
           <Text style={styles.summaryVal}>
-            $
-            {totalPrincipal.toLocaleString("en-US", {
+            {currencySymbol} {totalPrincipal.toLocaleString("en-US", {
               minimumFractionDigits: 2,
             })}
           </Text>
@@ -144,7 +143,7 @@ export default function LoansLedger() {
               netMonthlyCashflow >= 0 ? styles.incomeText : styles.debtText,
             ]}
           >
-            {netMonthlyCashflow >= 0 ? "+ $" : "- $"}
+            {netMonthlyCashflow >= 0 ? `+ ${currencySymbol} ` : `- ${currencySymbol} `}
             {Math.abs(netMonthlyCashflow).toLocaleString("en-US", {
               minimumFractionDigits: 2,
             })}
@@ -220,8 +219,7 @@ export default function LoansLedger() {
                           : styles.debtText,
                       ]}
                     >
-                      $
-                      {loan.monthly_emi.toLocaleString("en-US", {
+                      {currencySymbol} {loan.monthly_emi.toLocaleString("en-US", {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}
@@ -243,8 +241,7 @@ export default function LoansLedger() {
                       <View style={styles.schedStat}>
                         <Text style={styles.schedStatLabel}>Principal</Text>
                         <Text style={styles.schedStatVal}>
-                          $
-                          {loan.principal.toLocaleString("en-US", {
+                          {currencySymbol} {loan.principal.toLocaleString("en-US", {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
                           })}
@@ -257,8 +254,7 @@ export default function LoansLedger() {
                         <Text
                           style={[styles.schedStatVal, styles.interestText]}
                         >
-                          $
-                          {summary.totalInterest.toLocaleString("en-US", {
+                          {currencySymbol} {summary.totalInterest.toLocaleString("en-US", {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
                           })}
@@ -269,8 +265,7 @@ export default function LoansLedger() {
                           Total Repayments
                         </Text>
                         <Text style={styles.schedStatVal}>
-                          $
-                          {summary.totalRepayment.toLocaleString("en-US", {
+                          {currencySymbol} {summary.totalRepayment.toLocaleString("en-US", {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
                           })}
@@ -332,8 +327,7 @@ export default function LoansLedger() {
                                 styles.rowPrincipalText,
                               ]}
                             >
-                              $
-                              {row.principalPaid.toLocaleString("en-US", {
+                              {currencySymbol} {row.principalPaid.toLocaleString("en-US", {
                                 minimumFractionDigits: 2,
                                 maximumFractionDigits: 2,
                               })}
@@ -345,8 +339,7 @@ export default function LoansLedger() {
                                 styles.rowInterestText,
                               ]}
                             >
-                              $
-                              {row.interestPaid.toLocaleString("en-US", {
+                              {currencySymbol} {row.interestPaid.toLocaleString("en-US", {
                                 minimumFractionDigits: 2,
                                 maximumFractionDigits: 2,
                               })}
@@ -358,8 +351,7 @@ export default function LoansLedger() {
                                 styles.rowBalanceText,
                               ]}
                             >
-                              $
-                              {row.remainingBalance.toLocaleString("en-US", {
+                              {currencySymbol} {row.remainingBalance.toLocaleString("en-US", {
                                 minimumFractionDigits: 2,
                                 maximumFractionDigits: 2,
                               })}
@@ -488,7 +480,7 @@ export default function LoansLedger() {
 
               <View style={styles.formItem}>
                 <Text style={styles.formLabel}>
-                  Principal / Deposit Amount ($)
+                  Principal / Deposit Amount ({currencySymbol})
                 </Text>
                 <TextInput
                   placeholder="e.g. 18000"

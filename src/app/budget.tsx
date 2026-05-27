@@ -80,6 +80,7 @@ export default function BudgetScreen() {
     addRecurringTemplate,
     updateRecurringTemplate,
     deleteRecurringTemplate,
+    currencySymbol,
   } = useLocalStore();
 
   const [selectedMonth, setSelectedMonth] = useState(new Date());
@@ -302,8 +303,7 @@ export default function BudgetScreen() {
                   discretionaryCushion >= 0 ? styles.greenText : styles.redText,
                 ]}
               >
-                {discretionaryCushion >= 0 ? "+" : ""}$
-                {discretionaryCushion.toLocaleString("en-US", {
+                {discretionaryCushion >= 0 ? "+" : ""}{currencySymbol} {discretionaryCushion.toLocaleString("en-US", {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
                 })}
@@ -322,31 +322,31 @@ export default function BudgetScreen() {
             <View style={styles.budgetGridItem}>
               <Text style={styles.budgetGridLabel}>Net Income</Text>
               <Text style={[styles.budgetGridValue, styles.blueText]}>
-                +${totalIncome.toLocaleString()}
+                +{currencySymbol} {totalIncome.toLocaleString()}
               </Text>
             </View>
             <View style={styles.budgetGridItem}>
               <Text style={styles.budgetGridLabel}>Expenses</Text>
               <Text style={[styles.budgetGridValue, styles.redText]}>
-                -${totalExpenses.toLocaleString()}
+                -{currencySymbol} {totalExpenses.toLocaleString()}
               </Text>
             </View>
             <View style={styles.budgetGridItem}>
               <Text style={styles.budgetGridLabel}>Active EMIs</Text>
               <Text style={[styles.budgetGridValue, styles.redText]}>
-                -${emiSum.toLocaleString()}
+                -{currencySymbol} {emiSum.toLocaleString()}
               </Text>
             </View>
             <View style={styles.budgetGridItem}>
               <Text style={styles.budgetGridLabel}>Debts Payable</Text>
               <Text style={[styles.budgetGridValue, styles.redText]}>
-                -${borrowingSum.toLocaleString()}
+                -{currencySymbol} {borrowingSum.toLocaleString()}
               </Text>
             </View>
             <View style={styles.budgetGridItem}>
               <Text style={styles.budgetGridLabel}>Debts Receivable</Text>
               <Text style={[styles.budgetGridValue, styles.greenText]}>
-                +${lendingSum.toLocaleString()}
+                +{currencySymbol} {lendingSum.toLocaleString()}
               </Text>
             </View>
           </View>
@@ -394,7 +394,7 @@ export default function BudgetScreen() {
                   onPress={() => handleSetLimitModal(cat, limit)}
                 >
                   <Text style={styles.setLimitBtnText}>
-                    {limit > 0 ? `$${limit}` : "Set Limit"}
+                    {limit > 0 ? `${currencySymbol} ${limit}` : "Set Limit"}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -403,7 +403,7 @@ export default function BudgetScreen() {
                 <View style={{ marginTop: 10 }}>
                   <View style={styles.budgetLimitTextRow}>
                     <Text style={styles.budgetSpentText}>
-                      Spent: ${spent.toLocaleString()}
+                      Spent: {currencySymbol} {spent.toLocaleString()}
                     </Text>
                     <Text
                       style={[
@@ -411,8 +411,7 @@ export default function BudgetScreen() {
                         remaining >= 0 ? styles.greenText : styles.redText,
                       ]}
                     >
-                      {remaining >= 0 ? "Left" : "Over"}: $
-                      {Math.abs(remaining).toLocaleString()}
+                      {remaining >= 0 ? "Left" : "Over"}: {currencySymbol} {Math.abs(remaining).toLocaleString()}
                     </Text>
                   </View>
                   {/* Glassmorphic progress bar container */}
@@ -471,19 +470,19 @@ export default function BudgetScreen() {
                   <View style={styles.budgetGridItem}>
                     <Text style={styles.budgetGridLabel}>Principal</Text>
                     <Text style={[styles.budgetGridValue, styles.whiteText]}>
-                      ${debt.principal.toLocaleString()}
+                      {currencySymbol} {debt.principal.toLocaleString()}
                     </Text>
                   </View>
                   <View style={styles.budgetGridItem}>
                     <Text style={styles.budgetGridLabel}>Repaid</Text>
                     <Text style={[styles.budgetGridValue, styles.greenText]}>
-                      ${debt.payment_progress.toLocaleString()}
+                      {currencySymbol} {debt.payment_progress.toLocaleString()}
                     </Text>
                   </View>
                   <View style={styles.budgetGridItem}>
                     <Text style={styles.budgetGridLabel}>Outstanding</Text>
                     <Text style={[styles.budgetGridValue, styles.redText]}>
-                      ${outstanding.toLocaleString()}
+                      {currencySymbol} {outstanding.toLocaleString()}
                     </Text>
                   </View>
                 </View>
@@ -506,7 +505,7 @@ export default function BudgetScreen() {
               <View style={styles.budgetCategoryMetaRow}>
                 <Text style={styles.budgetLoanTitle}>🏦 {loan.name}</Text>
                 <Text style={styles.budgetLoanEmiLabel}>
-                  ${loan.monthly_emi}/mo
+                  {currencySymbol} {loan.monthly_emi}/mo
                 </Text>
               </View>
               <View
@@ -518,7 +517,7 @@ export default function BudgetScreen() {
                 <View style={styles.budgetGridItem}>
                   <Text style={styles.budgetGridLabel}>Principal</Text>
                   <Text style={[styles.budgetGridValue, styles.whiteText]}>
-                    ${loan.principal.toLocaleString()}
+                    {currencySymbol} {loan.principal.toLocaleString()}
                   </Text>
                 </View>
                 <View style={styles.budgetGridItem}>
@@ -599,8 +598,7 @@ export default function BudgetScreen() {
                           isExpense ? styles.redText : styles.greenText,
                         ]}
                       >
-                        {isExpense ? "-" : "+"}$
-                        {tmpl.amount.toLocaleString(undefined, {
+                        {isExpense ? "-" : "+"}{currencySymbol} {tmpl.amount.toLocaleString(undefined, {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
                         })}
@@ -685,7 +683,7 @@ export default function BudgetScreen() {
             <Text style={styles.modalTitle}>Set {limitCatName} Target</Text>
 
             <View style={styles.formItem}>
-              <Text style={styles.formLabel}>Monthly Limit Amount ($)</Text>
+              <Text style={styles.formLabel}>Monthly Limit Amount ({currencySymbol})</Text>
               <TextInput
                 keyboardType="numeric"
                 placeholder="e.g. 500 (Enter 0 to clear)"
@@ -795,7 +793,7 @@ export default function BudgetScreen() {
 
               {/* Amount Field */}
               <View style={styles.formItem}>
-                <Text style={styles.formLabel}>Amount ($)</Text>
+                <Text style={styles.formLabel}>Amount ({currencySymbol})</Text>
                 <TextInput
                   keyboardType="numeric"
                   placeholder="e.g. 99.99"
@@ -1138,11 +1136,11 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   badgeLending: {
-    backgroundColor: "#E8F8EE",
-    color: "#34C759",
+    backgroundColor: "rgba(48, 209, 88, 0.15)",
+    color: "#30D158",
   },
   badgeBorrowing: {
-    backgroundColor: "#FFEBEB",
+    backgroundColor: "rgba(255, 69, 58, 0.15)",
     color: "#FF453A",
   },
   budgetLoanCard: {

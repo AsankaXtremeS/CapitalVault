@@ -50,7 +50,7 @@ const CATEGORY_EMOJIS: Record<string, string> = {
 };
 
 export default function StatsView() {
-  const { transactions } = useLocalStore();
+  const { transactions, currencySymbol } = useLocalStore();
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [statsType, setStatsType] = useState<'income' | 'expense'>('expense');
   const [activeCategory, setActiveCategory] = useState<string | null>('Household'); // Default active matching screenshot
@@ -290,7 +290,7 @@ export default function StatsView() {
                     {CATEGORY_EMOJIS[activeWedge.name] || '📦'} {activeWedge.name}
                   </Text>
                   <Text style={styles.activeBadgeAmount}>
-                    ${activeWedge.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    {currencySymbol} {activeWedge.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                   </Text>
                   <Text style={styles.activeBadgePercent}>{activeWedge.percentage}% share</Text>
                 </View>
@@ -326,7 +326,7 @@ export default function StatsView() {
                   </Text>
                 </View>
                 <Text style={styles.catAmount}>
-                  ${cat.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  {currencySymbol} {cat.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </Text>
               </View>
             </TouchableOpacity>

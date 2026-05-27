@@ -172,6 +172,43 @@ export default function FloatingCalculator({ onInsert }: FloatingCalculatorProps
     setIsOpen(!isOpen);
   };
 
+  const updateLiveResult = (expr: string) => {
+    if (!expr.trim()) {
+      setResult('0');
+      return;
+    }
+
+    try {
+      let sanitized = expr
+        .replace(/x/g, '*')
+        .replace(/÷/g, '/')
+        .replace(/×/g, '*');
+      
+      // Smart percentage math: replace A + B% with A + (A * B * 0.01) and A - B% with A - (A * B * 0.01)
+      const percentRegex = /(\d+(?:\.\d+)?)\s*([\+\-])\s*(\d+(?:\.\d+)?)\s*%/g;
+      sanitized = sanitized.replace(percentRegex, (match, num1, op, num2) => {
+        return `${num1} ${op} (${num1} * ${num2} * 0.01)`;
+      });
+      
+      // Standard percentage fallback (e.g. 500 * 10% -> 500 * 10 * 0.01)
+      sanitized = sanitized.replace(/%/g, '*0.01');
+      
+      // Strip trailing operators for running evaluation
+      while (/[\+\-\*\/]$/.test(sanitized)) {
+        sanitized = sanitized.slice(0, -1);
+      }
+
+      if (sanitized.trim() && /^[0-9+\-*/().\s]+$/.test(sanitized)) {
+        const evalResult = new Function(`return (${sanitized})`)();
+        if (evalResult !== undefined && !isNaN(evalResult) && isFinite(evalResult)) {
+          setResult(Number(evalResult.toFixed(2)).toString());
+        }
+      }
+    } catch (e) {
+      // Ignore intermediate syntax failures while typing formula
+    }
+  };
+
   const handleKeyPress = (val: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
@@ -181,9 +218,51 @@ export default function FloatingCalculator({ onInsert }: FloatingCalculatorProps
       return;
     }
 
+    if (val === '⌫') {
+      const updated = expression.slice(0, -1);
+      setExpression(updated);
+      updateLiveResult(updated);
+      return;
+    }
+
+    if (val === '()') {
+      const openCount = (expression.match(/\(/g) || []).length;
+      const closeCount = (expression.match(/\)/g) || []).length;
+      
+      const lastChar = expression.slice(-1);
+      const isLastDigitOrSymbol = /[0-9\%\)]/.test(lastChar);
+
+      if (openCount > closeCount && isLastDigitOrSymbol) {
+        const newExpression = expression + ')';
+        setExpression(newExpression);
+        updateLiveResult(newExpression);
+      } else {
+        let prefix = '';
+        if (lastChar && /[0-9\%\)]/.test(lastChar)) {
+          prefix = 'x';
+        }
+        const newExpression = expression + prefix + '(';
+        setExpression(newExpression);
+        updateLiveResult(newExpression);
+      }
+      return;
+    }
+
     if (val === '=') {
       try {
-        let sanitized = expression.replace(/x/g, '*').replace(/÷/g, '/').replace(/×/g, '*');
+        let sanitized = expression
+          .replace(/x/g, '*')
+          .replace(/÷/g, '/')
+          .replace(/×/g, '*');
+        
+        // Smart percentage math: replace A + B% with A + (A * B * 0.01) and A - B% with A - (A * B * 0.01)
+        const percentRegex = /(\d+(?:\.\d+)?)\s*([\+\-])\s*(\d+(?:\.\d+)?)\s*%/g;
+        sanitized = sanitized.replace(percentRegex, (match, num1, op, num2) => {
+          return `${num1} ${op} (${num1} * ${num2} * 0.01)`;
+        });
+        
+        // Standard percentage fallback
+        sanitized = sanitized.replace(/%/g, '*0.01');
         
         // Resilience: clean trailing mathematical operators
         while (/[\+\-\*\/]$/.test(sanitized)) {
@@ -216,25 +295,7 @@ export default function FloatingCalculator({ onInsert }: FloatingCalculatorProps
     // Append digit or operator to formula
     const newExpression = expression + val;
     setExpression(newExpression);
-
-    // Live background calculations as the user types digits
-    try {
-      let sanitized = newExpression.replace(/x/g, '*').replace(/÷/g, '/').replace(/×/g, '*');
-      
-      // Strip trailing operators for running evaluation
-      while (/[\+\-\*\/]$/.test(sanitized)) {
-        sanitized = sanitized.slice(0, -1);
-      }
-
-      if (sanitized.trim() && /^[0-9+\-*/().\s]+$/.test(sanitized)) {
-        const evalResult = new Function(`return (${sanitized})`)();
-        if (evalResult !== undefined && !isNaN(evalResult) && isFinite(evalResult)) {
-          setResult(Number(evalResult.toFixed(2)).toString());
-        }
-      }
-    } catch (e) {
-      // Ignore intermediate syntax failures while typing formula
-    }
+    updateLiveResult(newExpression);
   };
 
   const handleInsert = () => {
@@ -293,11 +354,11 @@ export default function FloatingCalculator({ onInsert }: FloatingCalculatorProps
                 <TouchableOpacity onPress={() => handleKeyPress('C')} style={[styles.key, styles.keyAction]}>
                   <Text style={styles.keyTextAction}>C</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleKeyPress('(')} style={[styles.key, styles.keyAction]}>
-                  <Text style={styles.keyTextAction}>(</Text>
+                <TouchableOpacity onPress={() => handleKeyPress('()')} style={[styles.key, styles.keyAction]}>
+                  <Text style={styles.keyTextAction}>()</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleKeyPress(')')} style={[styles.key, styles.keyAction]}>
-                  <Text style={styles.keyTextAction}>)</Text>
+                <TouchableOpacity onPress={() => handleKeyPress('%')} style={[styles.key, styles.keyAction]}>
+                  <Text style={styles.keyTextAction}>%</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => handleKeyPress('÷')} style={[styles.key, styles.keyOperator]}>
                   <Text style={styles.keyTextOperator}>÷</Text>
@@ -350,11 +411,14 @@ export default function FloatingCalculator({ onInsert }: FloatingCalculatorProps
               </View>
 
               <View style={styles.row}>
-                <TouchableOpacity onPress={() => handleKeyPress('0')} style={[styles.key, styles.keyZero]}>
+                <TouchableOpacity onPress={() => handleKeyPress('0')} style={styles.key}>
                   <Text style={styles.keyText}>0</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => handleKeyPress('.')} style={styles.key}>
                   <Text style={styles.keyText}>.</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleKeyPress('⌫')} style={[styles.key, styles.keyAction]}>
+                  <Text style={styles.keyTextAction}>⌫</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => handleKeyPress('=')} style={[styles.key, styles.keyEquals]}>
                   <Text style={styles.keyTextEquals}>=</Text>

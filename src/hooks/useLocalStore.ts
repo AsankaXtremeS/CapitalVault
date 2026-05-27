@@ -111,6 +111,16 @@ interface LocalStoreState {
   updateImportantNotes: (notes: string) => Promise<void>;
   loadImportantNotes: () => Promise<void>;
 
+  // App Settings
+  currencySymbol: string;
+  isAppLockEnabled: boolean;
+  appPin: string | null;
+  isBiometricEnabled: boolean;
+  theme: 'dark' | 'light';
+  hapticsEnabled: boolean;
+  updateSettings: (settings: Partial<Pick<LocalStoreState, 'currencySymbol' | 'isAppLockEnabled' | 'appPin' | 'isBiometricEnabled' | 'theme' | 'hapticsEnabled'>>) => Promise<void>;
+  loadSettings: () => Promise<void>;
+
   // Cache utilities
   loadAllData: () => Promise<void>;
   setOnlineStatus: (status: boolean) => void;
@@ -242,6 +252,66 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
     openCalculator: () => set({ isCalculatorOpen: true }),
     closeCalculator: () => set({ isCalculatorOpen: false }),
 
+    // App Settings default state
+    currencySymbol: '$',
+    isAppLockEnabled: false,
+    appPin: null,
+    isBiometricEnabled: false,
+    theme: 'dark',
+    hapticsEnabled: true,
+    
+    updateSettings: async (settings) => {
+      set(settings);
+      
+      const current = get();
+      const settingsObj = {
+        currencySymbol: current.currencySymbol,
+        isAppLockEnabled: current.isAppLockEnabled,
+        appPin: current.appPin,
+        isBiometricEnabled: current.isBiometricEnabled,
+        theme: current.theme,
+        hapticsEnabled: current.hapticsEnabled,
+      };
+      
+      const json = JSON.stringify(settingsObj);
+      if (Platform.OS === "web") {
+        localStorage.setItem("money_app_global_settings", json);
+      } else {
+        try {
+          await SecureStore.setItemAsync("money_app_global_settings", json);
+        } catch (e) {}
+      }
+    },
+    
+    loadSettings: async () => {
+      let json: string | null = null;
+      if (Platform.OS === "web") {
+        json = localStorage.getItem("money_app_global_settings");
+      } else {
+        try {
+          json = await SecureStore.getItemAsync("money_app_global_settings");
+        } catch (e) {}
+      }
+      
+      if (json) {
+        try {
+          const parsed = JSON.parse(json);
+          let symbol = parsed.currencySymbol ?? '$';
+          if (symbol === 'LKR') {
+            symbol = 'Rs';
+          }
+          set({
+            currencySymbol: symbol,
+            isAppLockEnabled: parsed.isAppLockEnabled ?? false,
+            appPin: parsed.appPin ?? null,
+            isBiometricEnabled: parsed.isBiometricEnabled ?? false,
+            theme: parsed.theme ?? 'dark',
+            hapticsEnabled: parsed.hapticsEnabled ?? true,
+          });
+        } catch (e) {}
+      }
+    },
+
     customCategories: [],
     addCustomCategory: async (cat) => {
       const list = normalizeCustomCategories([...get().customCategories, cat]);
@@ -363,6 +433,9 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
 
         // Load important notes
         await get().loadImportantNotes();
+
+        // Load Global App Settings
+        await get().loadSettings();
 
         set({
           transactions: dbTxs,

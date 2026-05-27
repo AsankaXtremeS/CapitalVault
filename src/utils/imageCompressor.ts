@@ -1,5 +1,5 @@
 import * as ImageManipulator from 'expo-image-manipulator';
-import * as FileSystem from 'expo-file-system';
+import { File, Paths } from 'expo-file-system';
 
 export interface CompressionResult {
   uri: string;
@@ -20,7 +20,8 @@ export async function compressImageToLimit(
 ): Promise<CompressionResult> {
   try {
     // 1. Check initial file size
-    const initialInfo = await FileSystem.getInfoAsync(sourceUri);
+    const sourceFile = new File(sourceUri);
+    const initialInfo = await sourceFile.info();
     if (!initialInfo.exists) {
       throw new Error(`File does not exist at URI: ${sourceUri}`);
     }
@@ -55,7 +56,8 @@ export async function compressImageToLimit(
         }
       );
 
-      const manipulatedInfo = await FileSystem.getInfoAsync(manipulateResult.uri);
+      const manipulatedFile = new File(manipulateResult.uri);
+      const manipulatedInfo = await manipulatedFile.info();
       if (manipulatedInfo.exists) {
         currentUri = manipulateResult.uri;
         currentSize = manipulatedInfo.size;
@@ -68,15 +70,13 @@ export async function compressImageToLimit(
 
     // Move to permanent documents folder if it is in a temporary folder
     const fileName = `bill_${Date.now()}_compressed.jpg`;
-    // @ts-ignore
-    const destinationPath = `${FileSystem.documentDirectory}${fileName}`;
-    await FileSystem.copyAsync({
-      from: currentUri,
-      to: destinationPath,
-    });
+    const destinationFile = new File(Paths.document, fileName);
+    
+    const currentFile = new File(currentUri);
+    await currentFile.copy(destinationFile);
 
     return {
-      uri: destinationPath,
+      uri: destinationFile.uri,
       sizeBytes: currentSize,
       success: currentSize <= maxSizeBytes,
     };

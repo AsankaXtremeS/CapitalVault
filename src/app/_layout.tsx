@@ -1,17 +1,25 @@
 import FloatingCalculator from "@/components/FloatingCalculator";
+import LockScreen from "@/components/LockScreen";
 import { useLocalStore } from "@/hooks/useLocalStore";
 import { initializeDatabase } from "@/utils/db";
 import { Tabs } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import {
-    BarChart3,
-    BookOpen,
-    HandCoins,
-    Percent,
-    PiggyBank,
+  BarChart3,
+  BookOpen,
+  HandCoins,
+  Percent,
+  PiggyBank,
 } from "lucide-react-native";
 import React from "react";
-import { ActivityIndicator, StyleSheet, View, Image, Text, Animated } from "react-native";
+import {
+  Animated,
+  Image,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 interface AnimatedTabBarIconProps {
@@ -21,8 +29,15 @@ interface AnimatedTabBarIconProps {
   focused: boolean;
 }
 
-function AnimatedTabBarIcon({ IconComponent, color, size, focused }: AnimatedTabBarIconProps) {
-  const scaleAnim = React.useRef(new Animated.Value(focused ? 1.15 : 1.0)).current;
+function AnimatedTabBarIcon({
+  IconComponent,
+  color,
+  size,
+  focused,
+}: AnimatedTabBarIconProps) {
+  const scaleAnim = React.useRef(
+    new Animated.Value(focused ? 1.15 : 1.0),
+  ).current;
   const bounceAnim = React.useRef(new Animated.Value(focused ? -2 : 0)).current;
 
   React.useEffect(() => {
@@ -38,27 +53,33 @@ function AnimatedTabBarIcon({ IconComponent, color, size, focused }: AnimatedTab
         friction: 6,
         tension: 80,
         useNativeDriver: true,
-      })
+      }),
     ]).start();
   }, [focused]);
 
   return (
-    <Animated.View style={{ 
-      transform: [
-        { scale: scaleAnim },
-        { translateY: bounceAnim }
-      ],
-      alignItems: 'center',
-      justifyContent: 'center'
-    }}>
+    <Animated.View
+      style={{
+        transform: [{ scale: scaleAnim }, { translateY: bounceAnim }],
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
       <IconComponent color={color} size={size - 2} />
     </Animated.View>
   );
 }
 
 export default function RootLayout() {
-  const { loadAllData, isDbLoaded, pipeValue } = useLocalStore();
+  const {
+    loadAllData,
+    isDbLoaded,
+    pipeValue,
+    loadCloudSyncSettings,
+    isAppLockEnabled,
+  } = useLocalStore();
   const [animationComplete, setAnimationComplete] = React.useState(false);
+  const [isUnlocked, setIsUnlocked] = React.useState(false);
   const progressAnim = React.useRef(new Animated.Value(0)).current;
 
   React.useEffect(() => {
@@ -71,6 +92,9 @@ export default function RootLayout() {
       }
       // 2. Load SQLite records into Zustand reactive in-memory cache
       await loadAllData();
+
+      // 3. Load cloud settings and session
+      await loadCloudSyncSettings();
     }
     setupApp();
 
@@ -129,98 +153,137 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#121214" }}>
-        <StatusBar style="light" />
+      <StatusBar style="light" />
 
-        {/* Main Tab Router shell */}
-        <Tabs
-          screenOptions={{
-            headerShown: false,
-            tabBarActiveTintColor: "#1FA89B", // Teal-Green active accent
-            tabBarInactiveTintColor: "#8E8E93", // Muted secondary text
-            detachInactiveScreens: false, // Prevents Android native view attach/detach 1-frame white flicker
-            sceneContainerStyle: { backgroundColor: "#121214" }, // Force React Navigation container background to be dark
-            tabBarStyle: {
-              backgroundColor: "#1C1C1E", // Sleek slate container
-              borderTopColor: "#2C2C2E",
-              borderTopWidth: 1.5,
-              height: 64,
-              paddingBottom: 8,
-              paddingTop: 8,
-            },
-            tabBarLabelStyle: {
-              fontSize: 10,
-              fontWeight: "600",
-            },
+      {/* Main Tab Router shell */}
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarActiveTintColor: "#1FA89B", // Teal-Green active accent
+          tabBarInactiveTintColor: "#8E8E93", // Muted secondary text
+          detachInactiveScreens: false, // Prevents Android native view attach/detach 1-frame white flicker
+          sceneContainerStyle: { backgroundColor: "#121214" }, // Force React Navigation container background to be dark
+          tabBarButton: (props) => (
+            <TouchableOpacity {...props} activeOpacity={0.75} />
+          ),
+          tabBarStyle: {
+            backgroundColor: "#1C1C1E", // Sleek slate container
+            borderTopColor: "#2C2C2E",
+            borderTopWidth: 1.5,
+            height: 64,
+            paddingBottom: 8,
+            paddingTop: 8,
+          },
+          tabBarLabelStyle: {
+            fontSize: 10,
+            fontWeight: "600",
+          },
+        }}
+      >
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: "Trans.",
+            tabBarIcon: ({ color, size, focused }) => (
+              <AnimatedTabBarIcon
+                IconComponent={BookOpen}
+                color={color}
+                size={size}
+                focused={focused}
+              />
+            ),
           }}
-        >
-          <Tabs.Screen
-            name="index"
-            options={{
-              title: "Trans.",
-              tabBarIcon: ({ color, size, focused }) => (
-                <AnimatedTabBarIcon IconComponent={BookOpen} color={color} size={size} focused={focused} />
-              ),
-            }}
-          />
-          <Tabs.Screen
-            name="calendar"
-            options={{
-              href: null,
-            }}
-          />
-          <Tabs.Screen
-            name="monthly"
-            options={{
-              href: null,
-            }}
-          />
-          <Tabs.Screen
-            name="stats"
-            options={{
-              title: "Stats",
-              tabBarIcon: ({ color, size, focused }) => (
-                <AnimatedTabBarIcon IconComponent={BarChart3} color={color} size={size} focused={focused} />
-              ),
-            }}
-          />
-          <Tabs.Screen
-            name="debts"
-            options={{
-              title: "Debts",
-              tabBarIcon: ({ color, size, focused }) => (
-                <AnimatedTabBarIcon IconComponent={HandCoins} color={color} size={size} focused={focused} />
-              ),
-            }}
-          />
-          <Tabs.Screen
-            name="loans"
-            options={{
-              title: "Loans & Invest",
-              tabBarIcon: ({ color, size, focused }) => (
-                <AnimatedTabBarIcon IconComponent={Percent} color={color} size={size} focused={focused} />
-              ),
-            }}
-          />
-          <Tabs.Screen
-            name="budget"
-            options={{
-              title: "Budget",
-              tabBarIcon: ({ color, size, focused }) => (
-                <AnimatedTabBarIcon IconComponent={PiggyBank} color={color} size={size} focused={focused} />
-              ),
-            }}
-          />
-          {/* Hide default routing files that are not tabs */}
-          <Tabs.Screen
-            name="explore"
-            options={{
-              href: null,
-            }}
-          />
-        </Tabs>
+        />
+        <Tabs.Screen
+          name="calendar"
+          options={{
+            href: null,
+          }}
+        />
+        <Tabs.Screen
+          name="monthly"
+          options={{
+            href: null,
+          }}
+        />
+        <Tabs.Screen
+          name="stats"
+          options={{
+            title: "Stats",
+            tabBarIcon: ({ color, size, focused }) => (
+              <AnimatedTabBarIcon
+                IconComponent={BarChart3}
+                color={color}
+                size={size}
+                focused={focused}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="debts"
+          options={{
+            title: "Debts",
+            tabBarIcon: ({ color, size, focused }) => (
+              <AnimatedTabBarIcon
+                IconComponent={HandCoins}
+                color={color}
+                size={size}
+                focused={focused}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="loans"
+          options={{
+            title: "Loans & Invest",
+            tabBarIcon: ({ color, size, focused }) => (
+              <AnimatedTabBarIcon
+                IconComponent={Percent}
+                color={color}
+                size={size}
+                focused={focused}
+              />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="budget"
+          options={{
+            title: "Budget",
+            tabBarIcon: ({ color, size, focused }) => (
+              <AnimatedTabBarIcon
+                IconComponent={PiggyBank}
+                color={color}
+                size={size}
+                focused={focused}
+              />
+            ),
+          }}
+        />
+        {/* Hide default routing files that are not tabs */}
+        <Tabs.Screen
+          name="explore"
+          options={{
+            href: null,
+          }}
+        />
+        <Tabs.Screen
+          name="settings"
+          options={{
+            href: null,
+          }}
+        />
+      </Tabs>
 
-        {/* Global floating drag-and-drop calculator snapping to screen boundaries */}
-        <FloatingCalculator onInsert={(val) => pipeValue(val)} />
+      {/* Global floating drag-and-drop calculator snapping to screen boundaries */}
+      <FloatingCalculator onInsert={(val) => pipeValue(val)} />
+
+      {/* App Lock Overlay */}
+      {isAppLockEnabled && !isUnlocked && (
+        <LockScreen onUnlock={() => setIsUnlocked(true)} />
+      )}
     </GestureHandlerRootView>
   );
 }

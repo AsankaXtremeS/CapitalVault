@@ -14,29 +14,6 @@ export const isSupabaseConfigured = Boolean(
   SUPABASE_URL.trim() && SUPABASE_ANON_KEY.trim()
 );
 
-// Real client instance (will be configured only if credentials are set)
-export const supabase = isSupabaseConfigured
-  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: false,
-      },
-    })
-  : null;
-
-// ==========================================
-// 2. HIGH-FIDELITY SIMULATED CLOUD ENGINE
-// ==========================================
-// Persists simulated account credentials, sessions, and database backups locally 
-// using SecureStore (native) and localStorage (web) to mimic an remote database.
-
-interface SimulatedUser {
-  id: string;
-  email: string;
-  passwordHash: string;
-}
-
 // Persistent key helpers that adapt to iOS/Android/Web
 async function saveKey(key: string, value: string): Promise<void> {
   if (Platform.OS === 'web') {
@@ -74,6 +51,44 @@ async function removeKey(key: string): Promise<void> {
     }
   }
 }
+
+const ExpoSecureStoreAdapter = {
+  getItem: (key: string) => {
+    return getKey(key);
+  },
+  setItem: (key: string, value: string) => {
+    return saveKey(key, value);
+  },
+  removeItem: (key: string) => {
+    return removeKey(key);
+  },
+};
+
+// Real client instance (will be configured only if credentials are set)
+export const supabase = isSupabaseConfigured
+  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        storage: ExpoSecureStoreAdapter as any,
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: false,
+      },
+    })
+  : null;
+
+// ==========================================
+// 2. HIGH-FIDELITY SIMULATED CLOUD ENGINE
+// ==========================================
+// Persists simulated account credentials, sessions, and database backups locally 
+// using SecureStore (native) and localStorage (web) to mimic an remote database.
+
+interface SimulatedUser {
+  id: string;
+  email: string;
+  passwordHash: string;
+}
+
+
 
 // Registry helpers for registered users
 async function getSimulatedUsersRegistry(): Promise<SimulatedUser[]> {
