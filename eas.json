@@ -20,6 +20,9 @@
     },
     "production": {
       "autoIncrement": true,
+      "android": {
+        "buildType": "apk"
+      },
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://veufwnlmbdmzgpatrkuh.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZldWZ3bmxtYmRtemdwYXRya3VoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3ODQzNDgsImV4cCI6MjA5NTM2MDM0OH0.fD4TJ3xKFzewhmZ7bSoFzLv3HRtdGoxZaO36XWVIrv0"
