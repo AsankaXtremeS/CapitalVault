@@ -4,25 +4,25 @@ import { Debt, useLocalStore } from "@/hooks/useLocalStore";
 import { getThemedStyles } from "@/utils/themeHelper";
 import * as Haptics from "expo-haptics";
 import {
-    CheckCircle,
-    Clock,
-    HandCoins,
-    Plus,
-    Trash2,
-    TrendingUp,
-    User,
+  CheckCircle,
+  Clock,
+  HandCoins,
+  Plus,
+  Trash2,
+  TrendingUp,
+  User,
 } from "lucide-react-native";
 import { useMemo, useState } from "react";
 import {
-    Alert,
-    Dimensions,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Dimensions,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -276,7 +276,7 @@ export default function DebtsLedger() {
                     </View>
                   </View>
 
-                  {/* Interest Rate & Due Dates */}
+                  {/* Interest Rate, Due Date & Note */}
                   <View style={styles.metaRow}>
                     <View style={styles.metaCol}>
                       <Clock color="#8E8E93" size={14} />
@@ -286,6 +286,19 @@ export default function DebtsLedger() {
                           : "No due date"}
                       </Text>
                     </View>
+
+                    {debt.note ? (
+                      <View style={[styles.metaCol, styles.noteMetaCol]}>
+                        <Text
+                          style={styles.noteMetaText}
+                          numberOfLines={1}
+                          ellipsizeMode="tail"
+                        >
+                          {debt.note}
+                        </Text>
+                      </View>
+                    ) : null}
+
                     {debt.interest_rate > 0 && (
                       <View style={styles.metaCol}>
                         <TrendingUp color="#30D158" size={14} />
@@ -295,13 +308,6 @@ export default function DebtsLedger() {
                       </View>
                     )}
                   </View>
-
-                  {debt.note ? (
-                    <View style={styles.noteSection}>
-                      <Text style={styles.noteLabel}>Money Lend Note</Text>
-                      <Text style={styles.noteText}>{debt.note}</Text>
-                    </View>
-                  ) : null}
 
                   {/* Actions Bottom Bar */}
                   <View style={styles.cardActions}>
@@ -694,11 +700,22 @@ const staticStyles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginRight: 20,
+    flexShrink: 1,
+  },
+  noteMetaCol: {
+    flexShrink: 1,
+    maxWidth: "40%",
   },
   metaText: {
     color: "#8E8E93",
     fontSize: 12,
     marginLeft: 6,
+  },
+  noteMetaText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    marginLeft: 0,
+    flexShrink: 1,
   },
   cardActions: {
     flexDirection: "row",

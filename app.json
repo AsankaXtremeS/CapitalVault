@@ -4,18 +4,18 @@
     "slug": "money-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/Logo.png",
+    "icon": "./assets/icon.png",
     "scheme": "moneyapp",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/Logo.png",
+      "icon": "./assets/icon.png",
       "bundleIdentifier": "com.asanka.moneyapp"
     },
     "android": {
       "package": "com.asanka.moneyapp",
       "adaptiveIcon": {
         "backgroundColor": "#121214",
-        "foregroundImage": "./assets/Logo.png"
+        "foregroundImage": "./assets/icon.png"
       },
       "predictiveBackGestureEnabled": false
     },
