@@ -9,7 +9,8 @@ import {
     Plus,
     Trash2
 } from "lucide-react-native";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { getThemedStyles } from "@/utils/themeHelper";
 import {
     Alert,
     Dimensions,
@@ -93,7 +94,11 @@ export default function BudgetScreen() {
     updateRecurringTemplate,
     deleteRecurringTemplate,
     currencySymbol,
+    theme,
   } = useLocalStore();
+
+  const isDark = theme === 'dark';
+  const styles = useMemo(() => getThemedStyles(staticStyles, isDark), [isDark]);
 
   const [selectedMonth, setSelectedMonth] = useState(new Date());
 
@@ -283,7 +288,7 @@ export default function BudgetScreen() {
             onPress={() => handleMonthChange("prev")}
             style={styles.chevronBtn}
           >
-            <ChevronLeft color="#FFFFFF" size={20} />
+            <ChevronLeft color={isDark ? "#FFFFFF" : "#000000"} size={20} />
           </TouchableOpacity>
           <Text style={styles.periodText}>
             {selectedMonth.toLocaleDateString("en-US", {
@@ -295,7 +300,7 @@ export default function BudgetScreen() {
             onPress={() => handleMonthChange("next")}
             style={styles.chevronBtn}
           >
-            <ChevronRight color="#FFFFFF" size={20} />
+            <ChevronRight color={isDark ? "#FFFFFF" : "#000000"} size={20} />
           </TouchableOpacity>
         </View>
       </View>
@@ -325,7 +330,7 @@ export default function BudgetScreen() {
               style={styles.pdfDownloadBtn}
               onPress={handleDownloadPDF}
             >
-              <Database color="#FFFFFF" size={14} style={{ marginRight: 6 }} />
+              <Database color={isDark ? "#FFFFFF" : "#000000"} size={14} style={{ marginRight: 6 }} />
               <Text style={styles.pdfDownloadBtnText}>PDF Report</Text>
             </TouchableOpacity>
           </View>
@@ -959,7 +964,7 @@ export default function BudgetScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const staticStyles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#121214", // obsidian canvas background
