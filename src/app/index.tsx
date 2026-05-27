@@ -1,14 +1,11 @@
 import AnimatedScreenWrapper from "@/components/AnimatedScreenWrapper";
 import NumericalKeyboard from "@/components/NumericalKeyboard";
 import { Transaction, useLocalStore } from "@/hooks/useLocalStore";
-import { compressImageToLimit } from "@/utils/imageCompressor";
 import { getThemedStyles } from "@/utils/themeHelper";
 import * as Haptics from "expo-haptics";
-import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import {
   AlertTriangle,
-  Camera,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -162,8 +159,6 @@ export default function DailyLedger() {
   const [account, setAccount] = useState("Cash");
   const [note, setNote] = useState("");
   const [description, setDescription] = useState("");
-  const [billPath, setBillPath] = useState<string | null>(null);
-  const [billSize, setBillSize] = useState<string | null>(null);
   const [txDate, setTxDate] = useState<Date>(new Date());
   const [pickerMonth, setPickerMonth] = useState<Date>(new Date());
 
@@ -586,36 +581,6 @@ export default function DailyLedger() {
   // Notes extractor helper
   const notesTxs = periodTxs.filter((tx) => tx.note && tx.note.trim() !== "");
 
-  const handlePickBill = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permissionResult.granted) {
-      Alert.alert(
-        "Permission Denied",
-        "Camera access is required to capture bill receipts.",
-      );
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      const sourceUri = result.assets[0].uri;
-      // Compress offline image progressively below 300KB
-      const compressionResult = await compressImageToLimit(sourceUri);
-      if (compressionResult.success) {
-        setBillPath(compressionResult.uri);
-        setBillSize(`${Math.round(compressionResult.sizeBytes / 1024)}KB`);
-      } else {
-        setBillPath(sourceUri);
-        setBillSize("Large");
-      }
-    }
-  };
-
   const handlePickerMonthChange = (direction: "next" | "prev") => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const newMonth = new Date(pickerMonth);
@@ -632,7 +597,6 @@ export default function DailyLedger() {
     setAccount(tx.account);
     setNote(tx.note || "");
     setDescription(tx.description || "");
-    setBillPath(tx.bill_path || null);
     const dateObj = new Date(tx.date);
     setTxDate(dateObj);
     setPickerMonth(dateObj);
@@ -645,8 +609,6 @@ export default function DailyLedger() {
     setAccount("Cash");
     setNote("");
     setDescription("");
-    setBillPath(null);
-    setBillSize(null);
     setTxDate(new Date());
     setPickerMonth(new Date());
     setEditingTransactionId(null);
@@ -671,7 +633,6 @@ export default function DailyLedger() {
         date: txDate.getTime(),
         note: note.trim() || undefined,
         description: description.trim() || undefined,
-        bill_path: billPath || undefined,
         sync_status: "pending",
         updated_at: Date.now(),
       });
@@ -685,7 +646,6 @@ export default function DailyLedger() {
         date: txDate.getTime(),
         note: note.trim() || undefined,
         description: description.trim() || undefined,
-        bill_path: billPath || undefined,
       });
     }
 
@@ -1044,11 +1004,6 @@ export default function DailyLedger() {
                             ) : (
                               <Text style={styles.txAccountOnly}>
                                 {tx.account}
-                              </Text>
-                            )}
-                            {tx.bill_path && (
-                              <Text style={styles.attachmentLabel}>
-                                📎 Bill Attached
                               </Text>
                             )}
                           </View>
@@ -1588,28 +1543,6 @@ export default function DailyLedger() {
                   />
                 </View>
 
-                {/* Bill Attachment Picker Section */}
-                <View style={styles.formItem}>
-                  <Text style={styles.formLabel}>Bill Receipt Receipt</Text>
-                  <TouchableOpacity
-                    style={styles.cameraRow}
-                    onPress={handlePickBill}
-                  >
-                    <Camera color="#8E8E93" size={20} />
-                    <Text style={styles.cameraText}>
-                      {billPath
-                        ? `Re-Capture Bill (${billSize})`
-                        : "Attach Bill Image"}
-                    </Text>
-                  </TouchableOpacity>
-                  {billPath && (
-                    <View style={styles.attachedImageContainer}>
-                      <Text style={styles.attachedText}>
-                        Attached Image Ready for Sync
-                      </Text>
-                    </View>
-                  )}
-                </View>
 
                 <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
                   <Text style={styles.saveBtnText}>
