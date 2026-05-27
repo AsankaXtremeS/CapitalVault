@@ -5,9 +5,9 @@ import { Platform } from "react-native";
 import { create } from "zustand";
 import { getDatabase } from "../utils/db";
 import {
-    isSupabaseConfigured,
-    simulatedCloud,
-    supabase,
+  isSupabaseConfigured,
+  simulatedCloud,
+  supabase,
 } from "../utils/supabase";
 
 export interface Transaction {
@@ -33,6 +33,7 @@ export interface Debt {
   due_date?: number;
   interest_rate: number;
   payment_progress: number;
+  note?: string;
   sync_status: "synced" | "pending" | "deleted";
   updated_at: number;
 }
@@ -116,9 +117,21 @@ interface LocalStoreState {
   isAppLockEnabled: boolean;
   appPin: string | null;
   isBiometricEnabled: boolean;
-  theme: 'dark' | 'light';
+  theme: "dark" | "light";
   hapticsEnabled: boolean;
-  updateSettings: (settings: Partial<Pick<LocalStoreState, 'currencySymbol' | 'isAppLockEnabled' | 'appPin' | 'isBiometricEnabled' | 'theme' | 'hapticsEnabled'>>) => Promise<void>;
+  updateSettings: (
+    settings: Partial<
+      Pick<
+        LocalStoreState,
+        | "currencySymbol"
+        | "isAppLockEnabled"
+        | "appPin"
+        | "isBiometricEnabled"
+        | "theme"
+        | "hapticsEnabled"
+      >
+    >,
+  ) => Promise<void>;
   loadSettings: () => Promise<void>;
 
   // Cache utilities
@@ -253,16 +266,16 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
     closeCalculator: () => set({ isCalculatorOpen: false }),
 
     // App Settings default state
-    currencySymbol: '$',
+    currencySymbol: "$",
     isAppLockEnabled: false,
     appPin: null,
     isBiometricEnabled: false,
-    theme: 'dark',
+    theme: "dark",
     hapticsEnabled: true,
-    
+
     updateSettings: async (settings) => {
       set(settings);
-      
+
       const current = get();
       const settingsObj = {
         currencySymbol: current.currencySymbol,
@@ -272,7 +285,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
         theme: current.theme,
         hapticsEnabled: current.hapticsEnabled,
       };
-      
+
       const json = JSON.stringify(settingsObj);
       if (Platform.OS === "web") {
         localStorage.setItem("money_app_global_settings", json);
@@ -282,7 +295,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
         } catch (e) {}
       }
     },
-    
+
     loadSettings: async () => {
       let json: string | null = null;
       if (Platform.OS === "web") {
@@ -292,20 +305,20 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
           json = await SecureStore.getItemAsync("money_app_global_settings");
         } catch (e) {}
       }
-      
+
       if (json) {
         try {
           const parsed = JSON.parse(json);
-          let symbol = parsed.currencySymbol ?? '$';
-          if (symbol === 'LKR') {
-            symbol = 'Rs';
+          let symbol = parsed.currencySymbol ?? "$";
+          if (symbol === "LKR") {
+            symbol = "Rs";
           }
           set({
             currencySymbol: symbol,
             isAppLockEnabled: parsed.isAppLockEnabled ?? false,
             appPin: parsed.appPin ?? null,
             isBiometricEnabled: parsed.isBiometricEnabled ?? false,
-            theme: parsed.theme ?? 'dark',
+            theme: parsed.theme ?? "dark",
             hapticsEnabled: parsed.hapticsEnabled ?? true,
           });
         } catch (e) {}
@@ -582,6 +595,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
                   due_date: debt.due_date || null,
                   interest_rate: debt.interest_rate,
                   payment_progress: debt.payment_progress,
+                  note: debt.note || null,
                   updated_at: debt.updated_at,
                 });
                 if (error) {
@@ -976,8 +990,8 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
       try {
         const db = await getDatabase();
         await db.runAsync(
-          `INSERT INTO debts_lending (id, type, contact_name, contact_phone, principal, due_date, interest_rate, payment_progress, sync_status, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO debts_lending (id, type, contact_name, contact_phone, principal, due_date, interest_rate, payment_progress, note, sync_status, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             newDebt.id,
             newDebt.type,
@@ -987,6 +1001,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
             newDebt.due_date ?? null,
             newDebt.interest_rate,
             newDebt.payment_progress,
+            newDebt.note ?? null,
             newDebt.sync_status,
             newDebt.updated_at,
           ],
@@ -1016,7 +1031,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
         const db = await getDatabase();
         await db.runAsync(
           `UPDATE debts_lending 
-           SET type = ?, contact_name = ?, contact_phone = ?, principal = ?, due_date = ?, interest_rate = ?, payment_progress = ?, sync_status = ?, updated_at = ?
+           SET type = ?, contact_name = ?, contact_phone = ?, principal = ?, due_date = ?, interest_rate = ?, payment_progress = ?, note = ?, sync_status = ?, updated_at = ?
            WHERE id = ?`,
           [
             updatedDebt.type,
@@ -1026,6 +1041,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
             updatedDebt.due_date ?? null,
             updatedDebt.interest_rate,
             updatedDebt.payment_progress,
+            updatedDebt.note ?? null,
             updatedDebt.sync_status,
             updatedDebt.updated_at,
             updatedDebt.id,
@@ -1388,8 +1404,8 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
 
         for (const d of debts) {
           await db.runAsync(
-            `INSERT OR REPLACE INTO debts_lending (id, type, contact_name, contact_phone, principal, due_date, interest_rate, payment_progress, sync_status, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)`,
+            `INSERT OR REPLACE INTO debts_lending (id, type, contact_name, contact_phone, principal, due_date, interest_rate, payment_progress, note, sync_status, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)`,
             [
               d.id,
               d.type,
@@ -1399,6 +1415,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
               d.due_date ?? null,
               d.interest_rate,
               d.payment_progress,
+              d.note ?? null,
               d.updated_at,
             ],
           );

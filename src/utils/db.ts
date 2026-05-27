@@ -64,6 +64,7 @@ export async function initializeDatabase(): Promise<void> {
       due_date INTEGER,
       interest_rate REAL DEFAULT 0.0,
       payment_progress REAL DEFAULT 0.0,
+      note TEXT,
       sync_status TEXT CHECK(sync_status IN ('synced', 'pending', 'deleted')) DEFAULT 'pending',
       updated_at INTEGER NOT NULL
     );
@@ -89,6 +90,12 @@ export async function initializeDatabase(): Promise<void> {
     await db.execAsync(
       `ALTER TABLE loans_installments ADD COLUMN entry_type TEXT CHECK(entry_type IN ('income', 'expense')) NOT NULL DEFAULT 'expense';`,
     );
+  } catch (e) {
+    // Column already exists or migration not needed.
+  }
+
+  try {
+    await db.execAsync(`ALTER TABLE debts_lending ADD COLUMN note TEXT;`);
   } catch (e) {
     // Column already exists or migration not needed.
   }

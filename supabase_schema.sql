@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS public.debts_lending (
     due_date BIGINT, -- Unix timestamp in milliseconds
     interest_rate NUMERIC DEFAULT 0.0 CHECK (interest_rate >= 0),
     payment_progress NUMERIC DEFAULT 0.0 CHECK (payment_progress >= 0),
+    note TEXT,
     updated_at BIGINT NOT NULL -- Unix timestamp in milliseconds
 );
 
