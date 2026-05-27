@@ -9,7 +9,10 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/icon.png",
-      "bundleIdentifier": "com.asanka.moneyapp"
+      "bundleIdentifier": "com.asanka.moneyapp",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.asanka.moneyapp",
