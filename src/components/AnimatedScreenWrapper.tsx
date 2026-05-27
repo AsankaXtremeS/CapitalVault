@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Animated, StyleSheet } from "react-native";
 import { useNavigation } from "expo-router";
+import { useTheme } from "@/hooks/use-theme";
 
 interface AnimatedScreenWrapperProps {
   children: React.ReactNode;
@@ -10,6 +11,7 @@ export default function AnimatedScreenWrapper({ children }: AnimatedScreenWrappe
   const navigation = useNavigation();
   const [isFocused, setIsFocused] = useState(true);
   const fadeAnim = useRef(new Animated.Value(0.95)).current; // Snappy micro-fade (95% -> 100%) with NO scale changes
+  const theme = useTheme();
 
   useEffect(() => {
     // Subscribe to focus/blur events
@@ -50,6 +52,7 @@ export default function AnimatedScreenWrapper({ children }: AnimatedScreenWrappe
         styles.container,
         {
           opacity: fadeAnim,
+          backgroundColor: theme.background,
         },
       ]}
     >
@@ -61,6 +64,5 @@ export default function AnimatedScreenWrapper({ children }: AnimatedScreenWrappe
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#121214', // Matches your exact app background
   },
 });

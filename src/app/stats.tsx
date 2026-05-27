@@ -27,6 +27,11 @@ const CATEGORY_COLORS: Record<string, string> = {
   Health: '#FF3B30',             // Deep Red
   Education: '#007AFF',          // Royal Blue
   Gift: '#FF2D55',               // Ruby Pink
+  Liquor: '#C68B59',             // Warm Amber
+  Cigarettes: '#A28A67',         // Smokey Ash Bronze
+  Weed: '#28CD41',               // Herbal Green
+  Party: '#D352F3',              // Vibrant Violet
+  Wedding: '#E5C158',            // Premium Gold
   Other: '#AEAEB2',              // Platinum Silver Gray
 };
 
@@ -42,6 +47,12 @@ const CATEGORY_EMOJIS: Record<string, string> = {
   Health: '💊',
   Education: '📚',
   Gift: '🎁',
+  Telecommunications: '📞',
+  Liquor: '🥃',
+  Cigarettes: '🚬',
+  Weed: '🌿',
+  Party: '🎉',
+  Wedding: '💍',
   Salary: '💼',
   Allowance: '🪙',
   Bonus: '✨',

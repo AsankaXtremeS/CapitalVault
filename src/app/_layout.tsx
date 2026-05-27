@@ -3,6 +3,7 @@ import LockScreen from "@/components/LockScreen";
 import { useLocalStore } from "@/hooks/useLocalStore";
 import { initializeDatabase } from "@/utils/db";
 import { Tabs } from "expo-router";
+import { useTheme } from "@/hooks/use-theme";
 import { StatusBar } from "expo-status-bar";
 import {
   BarChart3,
@@ -77,10 +78,13 @@ export default function RootLayout() {
     pipeValue,
     loadCloudSyncSettings,
     isAppLockEnabled,
+    theme,
   } = useLocalStore();
   const [animationComplete, setAnimationComplete] = React.useState(false);
   const [isUnlocked, setIsUnlocked] = React.useState(false);
   const progressAnim = React.useRef(new Animated.Value(0)).current;
+  const themeColors = useTheme();
+  const isDark = theme === 'dark';
 
   React.useEffect(() => {
     async function setupApp() {
@@ -151,24 +155,25 @@ export default function RootLayout() {
     );
   }
 
+
   return (
-    <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#121214" }}>
-      <StatusBar style="light" />
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: themeColors.background }}>
+      <StatusBar style={isDark ? "light" : "dark"} />
 
       {/* Main Tab Router shell */}
       <Tabs
         screenOptions={{
           headerShown: false,
           tabBarActiveTintColor: "#1FA89B", // Teal-Green active accent
-          tabBarInactiveTintColor: "#8E8E93", // Muted secondary text
+          tabBarInactiveTintColor: themeColors.textSecondary, // Dynamic secondary text color
           detachInactiveScreens: false, // Prevents Android native view attach/detach 1-frame white flicker
-          sceneContainerStyle: { backgroundColor: "#121214" }, // Force React Navigation container background to be dark
+          sceneContainerStyle: { backgroundColor: themeColors.background }, // Dynamic container background
           tabBarButton: (props) => (
             <TouchableOpacity {...props} activeOpacity={0.75} />
           ),
           tabBarStyle: {
-            backgroundColor: "#1C1C1E", // Sleek slate container
-            borderTopColor: "#2C2C2E",
+            backgroundColor: themeColors.backgroundElement, // Dynamic tab bar background
+            borderTopColor: themeColors.backgroundSelected, // Dynamic tab bar border
             borderTopWidth: 1.5,
             height: 64,
             paddingBottom: 8,

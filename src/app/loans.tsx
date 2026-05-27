@@ -1,3 +1,5 @@
+import { useMemo } from 'react';
+import { getThemedStyles } from '@/utils/themeHelper';
 import { useLocalStore } from "@/hooks/useLocalStore";
 import AnimatedScreenWrapper from "@/components/AnimatedScreenWrapper";
 import {
@@ -30,7 +32,10 @@ import {
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 export default function LoansLedger() {
-  const { loans, addLoan, deleteLoan, currencySymbol } = useLocalStore();
+  const {loans, addLoan, deleteLoan, currencySymbol, theme} = useLocalStore();
+  const isDark = theme === 'dark';
+  const styles = useMemo(() => getThemedStyles(staticStyles, isDark), [isDark]);
+
 
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedLoanId, setSelectedLoanId] = useState<string | null>(null);
@@ -555,7 +560,7 @@ export default function LoansLedger() {
   );
 }
 
-const styles = StyleSheet.create({
+const staticStyles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#121214",

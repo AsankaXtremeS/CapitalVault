@@ -1,11 +1,15 @@
-import React, { useState } from 'react';
+import React, { useMemo,  useState } from 'react';
+import { getThemedStyles } from '@/utils/themeHelper';;
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity } from 'react-native';
 import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useLocalStore, Transaction } from '@/hooks/useLocalStore';
 
 export default function MonthlyView() {
-  const { transactions, currencySymbol } = useLocalStore();
+  const {transactions, currencySymbol, theme} = useLocalStore();
+  const isDark = theme === 'dark';
+  const styles = useMemo(() => getThemedStyles(staticStyles, isDark), [isDark]);
+
   const [selectedYear, setSelectedYear] = useState(2026);
   const [expandedMonth, setExpandedMonth] = useState<number | null>(new Date().getMonth()); // Default active month expanded
 
@@ -214,7 +218,7 @@ export default function MonthlyView() {
   );
 }
 
-const styles = StyleSheet.create({
+const staticStyles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#121214', // Deep Charcoal

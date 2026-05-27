@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useMemo,  useState } from 'react';
+import { getThemedStyles } from '@/utils/themeHelper';;
 import { 
   StyleSheet, 
   Text, 
@@ -29,7 +30,10 @@ import AnimatedScreenWrapper from '@/components/AnimatedScreenWrapper';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function DebtsLedger() {
-  const { debts, addDebt, updateDebt, deleteDebt, currencySymbol } = useLocalStore();
+  const {debts, addDebt, updateDebt, deleteDebt, currencySymbol, theme} = useLocalStore();
+  const isDark = theme === 'dark';
+  const styles = useMemo(() => getThemedStyles(staticStyles, isDark), [isDark]);
+
 
   const [activeTab, setActiveTab] = useState<'lending' | 'borrowing'>('lending');
   const [modalVisible, setModalVisible] = useState(false);
@@ -422,7 +426,7 @@ export default function DebtsLedger() {
   );
 }
 
-const styles = StyleSheet.create({
+const staticStyles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#121214',

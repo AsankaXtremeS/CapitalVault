@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, Switch, TouchableOpacity, ScrollView, Alert, Modal, TextInput } from 'react-native';
 import { useLocalStore } from '@/hooks/useLocalStore';
 import { File, Paths } from 'expo-file-system';
@@ -6,6 +6,7 @@ import * as Sharing from 'expo-sharing';
 import * as Haptics from 'expo-haptics';
 import { ChevronLeft, Save, FileDown, Bell, Moon, Sun, Lock, Vibrate, DollarSign } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
+import { getThemedStyles } from '@/utils/themeHelper';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -22,6 +23,7 @@ export default function SettingsScreen() {
   } = useLocalStore();
 
   const isDark = theme === 'dark';
+  const styles = useMemo(() => getThemedStyles(staticStyles, isDark), [isDark]);
 
   const [pinModalVisible, setPinModalVisible] = useState(false);
   const [newPin, setNewPin] = useState('');
@@ -128,7 +130,7 @@ export default function SettingsScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <ChevronLeft color="#FFFFFF" size={24} />
+          <ChevronLeft color={isDark ? "#FFFFFF" : "#000000"} size={24} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Settings</Text>
       </View>
@@ -292,7 +294,7 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const staticStyles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#121214',
