@@ -3,6 +3,7 @@ import LockScreen from "@/components/LockScreen";
 import { useLocalStore } from "@/hooks/useLocalStore";
 import { initializeDatabase } from "@/utils/db";
 import { Tabs } from "expo-router";
+import * as SplashScreen from 'expo-splash-screen';
 import { useTheme } from "@/hooks/use-theme";
 import { StatusBar } from "expo-status-bar";
 import {
@@ -71,6 +72,8 @@ function AnimatedTabBarIcon({
   );
 }
 
+SplashScreen.preventAutoHideAsync().catch(() => {});
+
 export default function RootLayout() {
   const {
     loadAllData,
@@ -87,6 +90,9 @@ export default function RootLayout() {
   const isDark = theme === 'dark';
 
   React.useEffect(() => {
+    // Hide the native splash screen immediately when the custom loading screen mounts
+    SplashScreen.hideAsync().catch(() => {});
+
     async function setupApp() {
       try {
         // 1. Initialize SQLite Database schemas and seeds
