@@ -6,6 +6,7 @@ import { Tabs } from "expo-router";
 import * as SplashScreen from 'expo-splash-screen';
 import { useTheme } from "@/hooks/use-theme";
 import { StatusBar } from "expo-status-bar";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   BarChart3,
   BookOpen,
@@ -88,6 +89,7 @@ export default function RootLayout() {
   const progressAnim = React.useRef(new Animated.Value(0)).current;
   const themeColors = useTheme();
   const isDark = theme === 'dark';
+  const insets = useSafeAreaInsets();
 
   React.useEffect(() => {
     // Hide the native splash screen immediately when the custom loading screen mounts
@@ -181,8 +183,8 @@ export default function RootLayout() {
             backgroundColor: themeColors.backgroundElement, // Dynamic tab bar background
             borderTopColor: themeColors.backgroundSelected, // Dynamic tab bar border
             borderTopWidth: 1.5,
-            height: 64,
-            paddingBottom: 8,
+            height: 64 + insets.bottom,
+            paddingBottom: 8 + insets.bottom,
             paddingTop: 8,
           },
           tabBarLabelStyle: {
