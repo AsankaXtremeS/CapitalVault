@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useMemo,  useState } from 'react';
+import { getThemedStyles } from '@/utils/themeHelper';;
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
 import { ChevronLeft, ChevronRight, SlidersHorizontal } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -7,7 +8,10 @@ import { useLocalStore } from '@/hooks/useLocalStore';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function CalendarView() {
-  const { transactions } = useLocalStore();
+  const {transactions, theme} = useLocalStore();
+  const isDark = theme === 'dark';
+  const styles = useMemo(() => getThemedStyles(staticStyles, isDark), [isDark]);
+
   const [selectedMonth, setSelectedMonth] = useState(new Date());
 
   const handleMonthChange = (direction: 'next' | 'prev') => {
@@ -193,7 +197,7 @@ export default function CalendarView() {
   );
 }
 
-const styles = StyleSheet.create({
+const staticStyles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#121214', // Deep Charcoal

@@ -4,11 +4,11 @@
  */
 
 import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useLocalStore } from '@/hooks/useLocalStore';
 
 export function useTheme() {
-  const scheme = useColorScheme();
-  const theme = scheme === 'unspecified' ? 'light' : scheme;
+  const themeSetting = useLocalStore((state) => state.theme);
+  const theme = themeSetting || 'dark';
 
   return Colors[theme];
 }

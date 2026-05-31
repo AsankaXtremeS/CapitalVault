@@ -1,11 +1,15 @@
-import React, { useState } from 'react';
+import React, { useMemo,  useState } from 'react';
+import { getThemedStyles } from '@/utils/themeHelper';;
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity } from 'react-native';
 import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useLocalStore, Transaction } from '@/hooks/useLocalStore';
 
 export default function MonthlyView() {
-  const { transactions } = useLocalStore();
+  const {transactions, currencySymbol, theme} = useLocalStore();
+  const isDark = theme === 'dark';
+  const styles = useMemo(() => getThemedStyles(staticStyles, isDark), [isDark]);
+
   const [selectedYear, setSelectedYear] = useState(2026);
   const [expandedMonth, setExpandedMonth] = useState<number | null>(new Date().getMonth()); // Default active month expanded
 
@@ -124,19 +128,19 @@ export default function MonthlyView() {
         <View style={styles.summaryCard}>
           <Text style={styles.summaryLabel}>Income</Text>
           <Text style={[styles.summaryVal, styles.incomeText]}>
-            ${totalYearIncome.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            {currencySymbol} {totalYearIncome.toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </Text>
         </View>
         <View style={styles.summaryCard}>
           <Text style={styles.summaryLabel}>Expenses</Text>
           <Text style={[styles.summaryVal, styles.expenseText]}>
-            ${totalYearExpenses.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            {currencySymbol} {totalYearExpenses.toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </Text>
         </View>
         <View style={styles.summaryCard}>
           <Text style={styles.summaryLabel}>Total Net</Text>
           <Text style={[styles.summaryVal, totalYearNet >= 0 ? styles.incomeText : styles.expenseText]}>
-            ${totalYearNet.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            {currencySymbol} {totalYearNet.toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </Text>
         </View>
       </View>
@@ -168,13 +172,13 @@ export default function MonthlyView() {
 
                 <View style={styles.monthFigures}>
                   <Text style={[styles.figureText, styles.incomeText]}>
-                    ${income.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    {currencySymbol} {income.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                   </Text>
                   <Text style={[styles.figureText, styles.expenseText]}>
-                    ${expense.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    {currencySymbol} {expense.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                   </Text>
                   <Text style={styles.netText}>
-                    ${net.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    {currencySymbol} {net.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -193,13 +197,13 @@ export default function MonthlyView() {
                       <Text style={styles.weekRange}>{week.rangeStr}</Text>
                       <View style={styles.weekFigures}>
                         <Text style={[styles.weekFigureVal, styles.incomeText]}>
-                          ${week.income.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          {currencySymbol} {week.income.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </Text>
                         <Text style={[styles.weekFigureVal, styles.expenseText]}>
-                          ${week.expense.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          {currencySymbol} {week.expense.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </Text>
                         <Text style={styles.weekNetVal}>
-                          ${week.net.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          {currencySymbol} {week.net.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </Text>
                       </View>
                     </View>
@@ -214,7 +218,7 @@ export default function MonthlyView() {
   );
 }
 
-const styles = StyleSheet.create({
+const staticStyles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#121214', // Deep Charcoal
