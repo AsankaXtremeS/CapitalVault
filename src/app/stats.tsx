@@ -78,9 +78,8 @@ export default function StatsView() {
   const styles = useMemo(() => getThemedStyles(staticStyles, isDark), [isDark]);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [statsType, setStatsType] = useState<"income" | "expense">("expense");
-  const [activeCategory, setActiveCategory] = useState<string | null>(
-    "Household",
-  ); // Default active matching screenshot
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [hasUserSelected, setHasUserSelected] = useState(false);
 
   const handleMonthChange = (direction: "next" | "prev") => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -90,6 +89,7 @@ export default function StatsView() {
     );
     setSelectedMonth(newMonth);
     setActiveCategory(null);
+    setHasUserSelected(false);
   };
 
   // Filter transactions
@@ -126,12 +126,21 @@ export default function StatsView() {
 
   const handleCategoryPress = (name: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (activeCategory === name) {
+    setHasUserSelected(true);
+    if (resolvedActiveCategory === name) {
       setActiveCategory(null);
     } else {
       setActiveCategory(name);
     }
   };
+
+  // Dynamic active category selection helper
+  const resolvedActiveCategory = useMemo(() => {
+    if (hasUserSelected) {
+      return activeCategory;
+    }
+    return categoryStats[0]?.name || null;
+  }, [activeCategory, categoryStats, hasUserSelected]);
 
   // SVG Geometry Dimensions
   const Cx = SCREEN_WIDTH / 2;
@@ -142,7 +151,10 @@ export default function StatsView() {
 
   // Mathematically plot each slice and its connected lines/tags
   const wedges = categoryStats.map((cat) => {
-    const angleDelta = (cat.percentage / 100) * 360 * (Math.PI / 180);
+    let angleDelta = (cat.percentage / 100) * 360 * (Math.PI / 180);
+    if (cat.percentage >= 99.9 || categoryStats.length === 1) {
+      angleDelta = 2 * Math.PI - 0.0001; // Avoid identical start/end angles causing zero-length path in SVG arc
+    }
     const startAngle = accumulatedAngle;
     const endAngle = accumulatedAngle + angleDelta;
     accumulatedAngle = endAngle;
@@ -151,7 +163,7 @@ export default function StatsView() {
     const largeArcFlag = cat.percentage > 50 ? 1 : 0;
 
     // Outer pop-out translation offset when active
-    const isActive = activeCategory === cat.name;
+    const isActive = resolvedActiveCategory === cat.name;
     const popDistance = isActive ? 10 : 0;
     const dx = popDistance * Math.cos(midAngle);
     const dy = popDistance * Math.sin(midAngle);
@@ -226,6 +238,7 @@ export default function StatsView() {
             onPress={() => {
               setStatsType("expense");
               setActiveCategory(null);
+              setHasUserSelected(false);
             }}
           >
             <Text
@@ -246,6 +259,7 @@ export default function StatsView() {
             onPress={() => {
               setStatsType("income");
               setActiveCategory(null);
+              setHasUserSelected(false);
             }}
           >
             <Text
@@ -370,7 +384,7 @@ export default function StatsView() {
                 activeOpacity={0.85}
                 style={[
                   styles.categoryCard,
-                  activeCategory === cat.name && styles.categoryCardActive,
+                  resolvedActiveCategory === cat.name && styles.categoryCardActive,
                 ]}
                 onPress={() => handleCategoryPress(cat.name)}
               >

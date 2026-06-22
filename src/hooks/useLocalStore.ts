@@ -663,7 +663,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
                   color: acc.color || null,
                   icon: acc.icon || null,
                   updated_at: acc.updated_at,
-                });
+                }, { onConflict: "user_id,name" });
                 if (error) {
                   throw new Error(
                     `Database synchronization failed. It looks like your accounts table is not provisioned in Supabase. Please copy and paste the SQL schema from "supabase_schema.sql" into your Supabase SQL Editor first to instantly create your database tables! (Error: ${error.message})`,
