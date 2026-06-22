@@ -116,4 +116,19 @@ export async function initializeDatabase(): Promise<void> {
       updated_at INTEGER NOT NULL
     );
   `);
+
+  // Accounts table
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS accounts (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      type TEXT NOT NULL,
+      initial_balance REAL DEFAULT 0.0,
+      color TEXT,
+      icon TEXT,
+      sync_status TEXT CHECK(sync_status IN ('synced', 'pending', 'deleted')) DEFAULT 'pending',
+      updated_at INTEGER NOT NULL
+    );
+  `);
 }
+

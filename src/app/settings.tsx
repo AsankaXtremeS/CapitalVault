@@ -4,7 +4,7 @@ import { useLocalStore } from '@/hooks/useLocalStore';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as Haptics from 'expo-haptics';
-import { ChevronLeft, Save, FileDown, Bell, Moon, Sun, Lock, Vibrate, DollarSign } from 'lucide-react-native';
+import { ChevronLeft, Save, FileDown, Bell, Moon, Sun, Lock, Vibrate, DollarSign, Wallet, Shield } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { getThemedStyles } from '@/utils/themeHelper';
 
@@ -19,7 +19,9 @@ export default function SettingsScreen() {
     appPin,
     updateSettings,
     transactions,
-    debts
+    debts,
+    accounts,
+    activeBalanceAccountId
   } = useLocalStore();
 
   const isDark = theme === 'dark';
@@ -28,6 +30,8 @@ export default function SettingsScreen() {
   const [pinModalVisible, setPinModalVisible] = useState(false);
   const [newPin, setNewPin] = useState('');
   const [currencyModalVisible, setCurrencyModalVisible] = useState(false);
+  const [activeBalanceModalVisible, setActiveBalanceModalVisible] = useState(false);
+  const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
 
   const toggleHaptics = async (value: boolean) => {
     if (value) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -163,6 +167,22 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Account Settings */}
+        <Text style={styles.sectionTitle}>ACCOUNT PREFERENCES</Text>
+        <View style={styles.card}>
+          <TouchableOpacity style={styles.row} onPress={() => setActiveBalanceModalVisible(true)}>
+            <View style={styles.rowLeft}>
+              <Wallet color="#8E8E93" size={20} />
+              <Text style={styles.rowText}>Active Balance Source</Text>
+            </View>
+            <Text style={styles.rowValue}>
+              {activeBalanceAccountId === 'all' || !activeBalanceAccountId
+                ? 'All Accounts'
+                : accounts.find(a => a.id === activeBalanceAccountId)?.name || 'All Accounts'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Security */}
         <Text style={styles.sectionTitle}>SECURITY</Text>
         <View style={styles.card}>
@@ -238,6 +258,18 @@ export default function SettingsScreen() {
             </View>
           </TouchableOpacity>
         </View>
+
+        {/* Legal */}
+        <Text style={styles.sectionTitle}>ABOUT & LEGAL</Text>
+        <View style={styles.card}>
+          <TouchableOpacity style={styles.row} onPress={() => setPrivacyModalVisible(true)}>
+            <View style={styles.rowLeft}>
+              <Shield color="#8E8E93" size={20} />
+              <Text style={styles.rowText}>Privacy Policy</Text>
+            </View>
+            <ChevronLeft style={{transform: [{rotate: '180deg'}]}} color="#8E8E93" size={20} />
+          </TouchableOpacity>
+        </View>
         
         <Text style={styles.versionText}>Money Manager v1.0.0</Text>
       </ScrollView>
@@ -284,6 +316,89 @@ export default function SettingsScreen() {
               ))}
             </ScrollView>
             <TouchableOpacity style={[styles.modalBtnCancel, {width: '100%', marginTop: 20}]} onPress={() => setCurrencyModalVisible(false)}>
+              <Text style={styles.modalBtnTextCancel}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Active Balance Setup Modal */}
+      <Modal visible={activeBalanceModalVisible} animationType="fade" transparent={true}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Active Balance Source</Text>
+            <ScrollView style={{maxHeight: 300, width: '100%'}}>
+              <TouchableOpacity
+                style={styles.currencyRow}
+                onPress={async () => {
+                  if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  await updateSettings({ activeBalanceAccountId: 'all' });
+                  setActiveBalanceModalVisible(false);
+                }}
+              >
+                <Text style={styles.currencyText}>All Accounts (Combined)</Text>
+                {(activeBalanceAccountId === 'all' || !activeBalanceAccountId) && <Text style={{color: '#1FA89B'}}>✓</Text>}
+              </TouchableOpacity>
+              
+              {accounts.map(acc => (
+                <TouchableOpacity
+                  key={acc.id}
+                  style={styles.currencyRow}
+                  onPress={async () => {
+                    if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    await updateSettings({ activeBalanceAccountId: acc.id });
+                    setActiveBalanceModalVisible(false);
+                  }}
+                >
+                  <Text style={styles.currencyText}>{acc.name}</Text>
+                  {activeBalanceAccountId === acc.id && <Text style={{color: '#1FA89B'}}>✓</Text>}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity style={[styles.modalBtnCancel, {width: '100%', marginTop: 20}]} onPress={() => setActiveBalanceModalVisible(false)}>
+              <Text style={styles.modalBtnTextCancel}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Privacy Policy Modal */}
+      <Modal visible={privacyModalVisible} animationType="slide" transparent={true}>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalContent, { width: '90%', maxHeight: '80%' }]}>
+            <Text style={styles.modalTitle}>Privacy Policy</Text>
+            <ScrollView style={{ width: '100%' }} showsVerticalScrollIndicator={true}>
+              <Text style={styles.privacySubTitle}>Version 1.0.0</Text>
+              <Text style={styles.privacyParagraph}>
+                Your privacy is our highest priority. CapitalVault is designed from the ground up to be a local-first, highly secure personal financial vault.
+              </Text>
+              
+              <Text style={styles.privacyHeading}>1. Local-First Data Storage</Text>
+              <Text style={styles.privacyParagraph}>
+                All of your transactions, accounts, debts, and loan templates are stored locally on your device in a private SQLite database. No financial records are sent to external servers unless you explicitly configure and initiate cloud backup.
+              </Text>
+              
+              <Text style={styles.privacyHeading}>2. Biometrics & Device Security</Text>
+              <Text style={styles.privacyParagraph}>
+                App lock PINs and biometric access tokens are stored securely in your device's native secure enclave (via expo-secure-store). We have zero access to your PIN or biometric data.
+              </Text>
+              
+              <Text style={styles.privacyHeading}>3. User-Initiated Cloud Sync</Text>
+              <Text style={styles.privacyParagraph}>
+                Cloud backup and sync functionality is completely optional and user-controlled. If enabled, your data is synchronized directly to your private Supabase backend instance.
+              </Text>
+              
+              <Text style={styles.privacyHeading}>4. Receipts & AI Processing</Text>
+              <Text style={styles.privacyParagraph}>
+                When using the Gemini AI receipt parsing feature, uploaded images are processed temporarily to extract data fields. They are not stored or used for model training purposes.
+              </Text>
+              
+              <Text style={styles.privacyHeading}>5. Analytics and Tracking</Text>
+              <Text style={styles.privacyParagraph}>
+                CapitalVault does not employ any third-party tracking scripts, advertising frameworks, or telemetry packages. Your financial journey remains entirely private to you.
+              </Text>
+            </ScrollView>
+            <TouchableOpacity style={[styles.modalBtnCancel, { width: '100%', marginTop: 20 }]} onPress={() => setPrivacyModalVisible(false)}>
               <Text style={styles.modalBtnTextCancel}>Close</Text>
             </TouchableOpacity>
           </View>
@@ -440,5 +555,24 @@ const staticStyles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '500'
+  },
+  privacySubTitle: {
+    color: '#8E8E93',
+    fontSize: 14,
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  privacyHeading: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  privacyParagraph: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 12,
   }
 });

@@ -66,8 +66,20 @@ export interface RecurringTemplate {
   updated_at: number;
 }
 
+export interface Account {
+  id: string;
+  name: string;
+  type: string;
+  initial_balance: number;
+  color?: string;
+  icon?: string;
+  sync_status: "synced" | "pending" | "deleted";
+  updated_at: number;
+}
+
 interface LocalStoreState {
   transactions: Transaction[];
+  accounts: Account[];
   debts: Debt[];
   loans: Loan[];
   recurringTemplates: RecurringTemplate[];
@@ -119,6 +131,7 @@ interface LocalStoreState {
   isBiometricEnabled: boolean;
   theme: "dark" | "light";
   hapticsEnabled: boolean;
+  activeBalanceAccountId: string;
   updateSettings: (
     settings: Partial<
       Pick<
@@ -129,6 +142,7 @@ interface LocalStoreState {
         | "isBiometricEnabled"
         | "theme"
         | "hapticsEnabled"
+        | "activeBalanceAccountId"
       >
     >,
   ) => Promise<void>;
@@ -152,6 +166,13 @@ interface LocalStoreState {
   toggleSyncOnMobileData: (val: boolean) => Promise<void>;
   toggleAutoCloudSync: (val: boolean) => Promise<void>;
   loadCloudSyncSettings: () => Promise<void>;
+
+  // Accounts CRUD
+  addAccount: (
+    account: Omit<Account, "sync_status" | "updated_at">,
+  ) => Promise<void>;
+  updateAccount: (account: Account) => Promise<void>;
+  deleteAccount: (id: string) => Promise<void>;
 
   // Transaction CRUD
   addTransaction: (
@@ -246,6 +267,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
 
   return {
     transactions: [],
+    accounts: [],
     debts: [],
     loans: [],
     recurringTemplates: [],
@@ -272,6 +294,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
     isBiometricEnabled: false,
     theme: "dark",
     hapticsEnabled: true,
+    activeBalanceAccountId: "all",
 
     updateSettings: async (settings) => {
       set(settings);
@@ -284,6 +307,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
         isBiometricEnabled: current.isBiometricEnabled,
         theme: current.theme,
         hapticsEnabled: current.hapticsEnabled,
+        activeBalanceAccountId: current.activeBalanceAccountId,
       };
 
       const json = JSON.stringify(settingsObj);
@@ -320,6 +344,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
             isBiometricEnabled: parsed.isBiometricEnabled ?? false,
             theme: parsed.theme ?? "dark",
             hapticsEnabled: parsed.hapticsEnabled ?? true,
+            activeBalanceAccountId: parsed.activeBalanceAccountId ?? "all",
           });
         } catch (e) {}
       }
@@ -441,6 +466,45 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
           "SELECT * FROM recurring_templates WHERE sync_status != 'deleted' ORDER BY day_of_month ASC",
         );
 
+        // 5. Fetch accounts
+        let dbAccounts = await db.getAllAsync<Account>(
+          "SELECT * FROM accounts WHERE sync_status != 'deleted' ORDER BY name ASC",
+        );
+
+        if (dbAccounts.length === 0) {
+          const txAccounts = await db.getAllAsync<{ account: string }>(
+            "SELECT DISTINCT account FROM transactions"
+          );
+          const uniqueNames = new Set<string>();
+          if (txAccounts) {
+            txAccounts.forEach((t) => {
+              if (t.account && t.account.trim()) {
+                uniqueNames.add(t.account.trim());
+              }
+            });
+          }
+          const standardDefaults = ["Cash", "Card", "Savings"];
+          standardDefaults.forEach((d) => uniqueNames.add(d));
+
+          const colors = ["#34C759", "#0A84FF", "#5856D6", "#FF9500", "#FF3B30", "#AF52DE"];
+          let colorIdx = 0;
+          for (const name of uniqueNames) {
+            const id = `acc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const type = name.toLowerCase() === "card" ? "Card" : (name.toLowerCase() === "savings" ? "Savings" : "Cash");
+            const color = colors[colorIdx % colors.length];
+            colorIdx++;
+            await db.runAsync(
+              `INSERT INTO accounts (id, name, type, initial_balance, color, sync_status, updated_at)
+               VALUES (?, ?, ?, 0.0, ?, 'pending', ?)`,
+              [id, name, type, color, Date.now()]
+            );
+          }
+
+          dbAccounts = await db.getAllAsync<Account>(
+            "SELECT * FROM accounts WHERE sync_status != 'deleted' ORDER BY name ASC"
+          );
+        }
+
         // Load custom categories
         await get().loadCustomCategoriesList();
 
@@ -452,6 +516,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
 
         set({
           transactions: dbTxs,
+          accounts: dbAccounts,
           debts: dbDebts,
           loans: normalizedLoans,
           recurringTemplates: dbTemplates,
@@ -501,6 +566,9 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
         const pendingTxs = await db.getAllAsync<Transaction>(
           "SELECT * FROM transactions WHERE sync_status IN ('pending', 'deleted')",
         );
+        const pendingAccounts = await db.getAllAsync<Account>(
+          "SELECT * FROM accounts WHERE sync_status IN ('pending', 'deleted')",
+        );
         const pendingDebts = await db.getAllAsync<Debt>(
           "SELECT * FROM debts_lending WHERE sync_status IN ('pending', 'deleted')",
         );
@@ -513,6 +581,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
 
         const totalPending =
           pendingTxs.length +
+          pendingAccounts.length +
           pendingDebts.length +
           pendingLoans.length +
           pendingTemplates.length;
@@ -564,6 +633,45 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
                 await db.runAsync(
                   "UPDATE transactions SET sync_status = 'synced' WHERE id = ?",
                   [tx.id],
+                );
+              }
+            }
+
+            // Sync Accounts
+            for (const acc of pendingAccounts) {
+              if (acc.sync_status === "deleted") {
+                const { error } = await supabase
+                  .from("accounts")
+                  .delete()
+                  .eq("id", acc.id)
+                  .eq("user_id", userId);
+                if (error) {
+                  throw new Error(
+                    `Database synchronization failed. Please copy and paste the SQL commands from "supabase_schema.sql" into your Supabase Dashboard SQL Editor to create your accounts table! (Error: ${error.message})`,
+                  );
+                }
+                await db.runAsync("DELETE FROM accounts WHERE id = ?", [
+                  acc.id,
+                ]);
+              } else {
+                const { error } = await supabase.from("accounts").upsert({
+                  id: acc.id,
+                  user_id: userId,
+                  name: acc.name,
+                  type: acc.type,
+                  initial_balance: acc.initial_balance,
+                  color: acc.color || null,
+                  icon: acc.icon || null,
+                  updated_at: acc.updated_at,
+                });
+                if (error) {
+                  throw new Error(
+                    `Database synchronization failed. It looks like your accounts table is not provisioned in Supabase. Please copy and paste the SQL schema from "supabase_schema.sql" into your Supabase SQL Editor first to instantly create your database tables! (Error: ${error.message})`,
+                  );
+                }
+                await db.runAsync(
+                  "UPDATE accounts SET sync_status = 'synced' WHERE id = ?",
+                  [acc.id],
                 );
               }
             }
@@ -764,6 +872,19 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
               }
             }
 
+            for (const acc of pendingAccounts) {
+              if (acc.sync_status === "deleted") {
+                await db.runAsync("DELETE FROM accounts WHERE id = ?", [
+                  acc.id,
+                ]);
+              } else {
+                await db.runAsync(
+                  "UPDATE accounts SET sync_status = 'synced' WHERE id = ?",
+                  [acc.id],
+                );
+              }
+            }
+
             for (const debt of pendingDebts) {
               if (debt.sync_status === "deleted") {
                 await db.runAsync("DELETE FROM debts_lending WHERE id = ?", [
@@ -818,11 +939,19 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
             const freshTemplates = await db.getAllAsync<RecurringTemplate>(
               "SELECT * FROM recurring_templates",
             );
+            const freshAccounts = await db.getAllAsync<Account>(
+              "SELECT * FROM accounts",
+            );
 
             await simulatedCloud.db.backupTable(
               userId,
               "transactions",
               freshTxs,
+            );
+            await simulatedCloud.db.backupTable(
+              userId,
+              "accounts",
+              freshAccounts,
             );
             await simulatedCloud.db.backupTable(
               userId,
@@ -860,6 +989,103 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
         if (force) throw error;
       } finally {
         set({ isSyncing: false });
+      }
+    },
+
+    // Accounts Actions
+    addAccount: async (acc) => {
+      const now = Date.now();
+      const newAcc: Account = {
+        ...acc,
+        sync_status: "pending",
+        updated_at: now,
+      };
+
+      try {
+        const db = await getDatabase();
+        await db.runAsync(
+          `INSERT INTO accounts (id, name, type, initial_balance, color, icon, sync_status, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`,
+          [
+            newAcc.id,
+            newAcc.name,
+            newAcc.type,
+            newAcc.initial_balance,
+            newAcc.color || null,
+            newAcc.icon || null,
+            newAcc.updated_at,
+          ],
+        );
+
+        set({ accounts: [...get().accounts, newAcc] });
+
+        // Trigger auto cloud sync
+        if (get().isOnline) {
+          get().triggerCloudSync();
+        }
+      } catch (error) {
+        console.error("Failed to insert account in local SQLite:", error);
+        throw error;
+      }
+    },
+
+    updateAccount: async (acc) => {
+      const updatedAcc: Account = {
+        ...acc,
+        sync_status: "pending",
+        updated_at: Date.now(),
+      };
+
+      try {
+        const db = await getDatabase();
+        await db.runAsync(
+          `UPDATE accounts
+           SET name = ?, type = ?, initial_balance = ?, color = ?, icon = ?, sync_status = 'pending', updated_at = ?
+           WHERE id = ?`,
+          [
+            updatedAcc.name,
+            updatedAcc.type,
+            updatedAcc.initial_balance,
+            updatedAcc.color || null,
+            updatedAcc.icon || null,
+            updatedAcc.updated_at,
+            updatedAcc.id,
+          ],
+        );
+
+        set({
+          accounts: get().accounts.map((a) => (a.id === acc.id ? updatedAcc : a)),
+        });
+
+        // Trigger auto cloud sync
+        if (get().isOnline) {
+          get().triggerCloudSync();
+        }
+      } catch (error) {
+        console.error("Failed to update account in local SQLite:", error);
+        throw error;
+      }
+    },
+
+    deleteAccount: async (id) => {
+      try {
+        const db = await getDatabase();
+        await db.runAsync(
+          "UPDATE accounts SET sync_status = 'deleted', updated_at = ? WHERE id = ?",
+          [Date.now(), id],
+        );
+
+        set({
+          accounts: get().accounts.filter((a) => a.id !== id),
+        });
+
+        // Trigger auto cloud sync
+        if (get().isOnline) {
+          get().triggerCloudSync();
+        }
+      } catch (error) {
+        console.error("Failed to soft-delete account in local SQLite:", error);
+        throw error;
       }
     },
 
@@ -1314,6 +1540,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
         const userId = user.id;
 
         let txs: Transaction[] = [];
+        let cloudAccounts: Account[] = [];
         let debts: Debt[] = [];
         let loans: Loan[] = [];
         let templates: RecurringTemplate[] = [];
@@ -1322,6 +1549,10 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
         if (isSupabaseConfigured && supabase) {
           const { data: dbTxs, error: tErr } = await supabase
             .from("transactions")
+            .select("*")
+            .eq("user_id", userId);
+          const { data: dbAccounts, error: aErr } = await supabase
+            .from("accounts")
             .select("*")
             .eq("user_id", userId);
           const { data: dbDebts, error: dErr } = await supabase
@@ -1341,9 +1572,10 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
             .select("*")
             .eq("user_id", userId);
 
-          if (tErr || dErr || lErr || tmplErr || cErr) {
+          if (tErr || aErr || dErr || lErr || tmplErr || cErr) {
             console.error("Supabase fetch details:", {
               tErr,
+              aErr,
               dErr,
               lErr,
               tmplErr,
@@ -1355,12 +1587,14 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
           }
 
           txs = (dbTxs || []) as Transaction[];
+          cloudAccounts = (dbAccounts || []) as Account[];
           debts = (dbDebts || []) as Debt[];
           loans = (dbLoans || []) as Loan[];
           templates = (dbTemplates || []) as RecurringTemplate[];
           cats = (dbCats || []) as any[];
         } else {
           txs = await simulatedCloud.db.fetchTable(userId, "transactions");
+          cloudAccounts = await simulatedCloud.db.fetchTable(userId, "accounts");
           debts = await simulatedCloud.db.fetchTable(userId, "debts_lending");
           loans = await simulatedCloud.db.fetchTable(
             userId,
@@ -1378,6 +1612,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
 
         // Wipe local tables cleanly
         await db.runAsync("DELETE FROM transactions");
+        await db.runAsync("DELETE FROM accounts");
         await db.runAsync("DELETE FROM debts_lending");
         await db.runAsync("DELETE FROM loans_installments");
         await db.runAsync("DELETE FROM recurring_templates");
@@ -1398,6 +1633,22 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
               t.description ?? null,
               t.bill_path ?? null,
               t.updated_at,
+            ],
+          );
+        }
+
+        for (const acc of cloudAccounts) {
+          await db.runAsync(
+            `INSERT OR REPLACE INTO accounts (id, name, type, initial_balance, color, icon, sync_status, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, 'synced', ?)`,
+            [
+              acc.id,
+              acc.name,
+              acc.type,
+              acc.initial_balance,
+              acc.color ?? null,
+              acc.icon ?? null,
+              acc.updated_at,
             ],
           );
         }
@@ -1488,6 +1739,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
       try {
         const db = await getDatabase();
         await db.runAsync("DELETE FROM transactions");
+        await db.runAsync("DELETE FROM accounts");
         await db.runAsync("DELETE FROM debts_lending");
         await db.runAsync("DELETE FROM loans_installments");
         await db.runAsync("DELETE FROM recurring_templates");
@@ -1504,6 +1756,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
 
         set({
           transactions: [],
+          accounts: [],
           debts: [],
           loans: [],
           recurringTemplates: [],

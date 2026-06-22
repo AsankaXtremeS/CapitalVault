@@ -63,7 +63,6 @@ const INCOME_CATEGORIES = [
   "Petty cash",
   "Other",
 ];
-const ACCOUNTS = ["Cash", "Accounts", "Card"];
 
 const CATEGORY_EMOJIS: Record<string, string> = {
   Food: "🍜",
@@ -112,6 +111,7 @@ const getDayBadgeStyle = (date: Date) => {
 export default function DailyLedger() {
   const {
     transactions,
+    accounts,
     addTransaction,
     updateTransaction,
     deleteTransaction,
@@ -139,9 +139,10 @@ export default function DailyLedger() {
     addCustomCategory,
     importantNotes,
     updateImportantNotes,
-    simulatedCloud,
     currencySymbol,
     theme,
+    activeBalanceAccountId,
+    updateSettings,
   } = useLocalStore();
 
   const isDark = theme === "dark";
@@ -151,6 +152,14 @@ export default function DailyLedger() {
 
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
+
+  // Account Management States
+  const [showAddAccountModal, setShowAddAccountModal] = useState(false);
+  const [selectedAccountForEdit, setSelectedAccountForEdit] = useState<any>(null);
+  const [newAccountName, setNewAccountName] = useState("");
+  const [newAccountType, setNewAccountType] = useState("Cash");
+  const [newAccountInitialBalance, setNewAccountInitialBalance] = useState("0");
+  const [newAccountColor, setNewAccountColor] = useState("#34C759");
 
   // Transaction Form States
   const [txType, setTxType] = useState<"income" | "expense">("expense");
@@ -187,6 +196,105 @@ export default function DailyLedger() {
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSuccess, setAuthSuccess] = useState<string | null>(null);
+
+  // Default to first account name if current selection becomes invalid or empty
+  useEffect(() => {
+    if (accounts.length > 0 && !accounts.some((a) => a.name.toLowerCase() === account.toLowerCase())) {
+      setAccount(accounts[0].name);
+    }
+  }, [accounts]);
+
+  // Account balance computation
+  const getAccountBalance = (accName: string, initialBalance: number) => {
+    const accTxs = transactions.filter(
+      (tx) => tx.account.toLowerCase() === accName.toLowerCase()
+    );
+    const income = accTxs
+      .filter((tx) => tx.type === "income")
+      .reduce((sum, tx) => sum + tx.amount, 0);
+    const expense = accTxs
+      .filter((tx) => tx.type === "expense")
+      .reduce((sum, tx) => sum + tx.amount, 0);
+    return initialBalance + income - expense;
+  };
+
+  const totalActiveBalance = useMemo(() => {
+    if (!activeBalanceAccountId || activeBalanceAccountId === "all") {
+      return accounts.reduce((sum, acc) => sum + getAccountBalance(acc.name, acc.initial_balance), 0);
+    }
+    const activeAcc = accounts.find((a) => a.id === activeBalanceAccountId);
+    if (!activeAcc) {
+      return accounts.reduce((sum, acc) => sum + getAccountBalance(acc.name, acc.initial_balance), 0);
+    }
+    return getAccountBalance(activeAcc.name, activeAcc.initial_balance);
+  }, [accounts, transactions, activeBalanceAccountId]);
+
+  const handleSaveAccount = async () => {
+    if (!newAccountName.trim()) {
+      Alert.alert("Error", "Please enter an account name.");
+      return;
+    }
+    const initBal = parseFloat(newAccountInitialBalance) || 0;
+    
+    const isConflict = accounts.some(
+      (a) =>
+        a.name.toLowerCase() === newAccountName.trim().toLowerCase() &&
+        (!selectedAccountForEdit || a.id !== selectedAccountForEdit.id)
+    );
+    if (isConflict) {
+      Alert.alert("Error", "An account with this name already exists.");
+      return;
+    }
+
+    const { addAccount, updateAccount } = useLocalStore.getState();
+
+    if (selectedAccountForEdit) {
+      await updateAccount({
+        ...selectedAccountForEdit,
+        name: newAccountName.trim(),
+        type: newAccountType,
+        initial_balance: initBal,
+        color: newAccountColor,
+      });
+    } else {
+      await addAccount({
+        id: `acc-${Date.now()}`,
+        name: newAccountName.trim(),
+        type: newAccountType,
+        initial_balance: initBal,
+        color: newAccountColor,
+      });
+    }
+    handleCloseAccountModal();
+  };
+
+  const handleCloseAccountModal = () => {
+    setShowAddAccountModal(false);
+    setSelectedAccountForEdit(null);
+    setNewAccountName("");
+    setNewAccountType("Cash");
+    setNewAccountInitialBalance("0");
+    setNewAccountColor("#34C759");
+  };
+
+  const handleDeleteAccount = (id: string) => {
+    Alert.alert(
+      "Delete Account",
+      "Are you sure you want to delete this account? Transactions associated with this account name will remain, but the account itself will be removed.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            const { deleteAccount } = useLocalStore.getState();
+            await deleteAccount(id);
+            handleCloseAccountModal();
+          },
+        },
+      ]
+    );
+  };
 
   // Load Cloud Sync settings on mount
   useEffect(() => {
@@ -773,10 +881,14 @@ export default function DailyLedger() {
         {/* Mesh-Gradient Balance Card */}
         <View style={styles.balanceCardWrapper}>
           <View style={styles.balanceCard}>
-            <Text style={styles.balanceCardTitle}>Active Balance</Text>
+            <Text style={styles.balanceCardTitle}>
+              {activeBalanceAccountId === "all" || !activeBalanceAccountId
+                ? "Active Balance"
+                : `Active Balance (${accounts.find((a) => a.id === activeBalanceAccountId)?.name || "Account"})`}
+            </Text>
             <Text style={styles.balanceCardAmount}>
               {currencySymbol}{" "}
-              {totalNet.toLocaleString("en-US", {
+              {totalActiveBalance.toLocaleString("en-US", {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}
@@ -810,6 +922,69 @@ export default function DailyLedger() {
               </View>
             </View>
           </View>
+        </View>
+
+        {/* Dynamic Accounts List Widget */}
+        <View style={styles.accountsSection}>
+          <View style={styles.accountsHeader}>
+            <Text style={styles.accountsSectionTitle}>My Accounts</Text>
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowAddAccountModal(true);
+              }}
+              style={styles.addAccountBtn}
+            >
+              <Text style={styles.addAccountBtnText}>+ Add Account</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.accountsScrollContent}
+          >
+            {accounts.map((acc) => {
+              const balance = getAccountBalance(acc.name, acc.initial_balance);
+              const isActive = activeBalanceAccountId === acc.id;
+              return (
+                <TouchableOpacity
+                  key={acc.id}
+                  style={[
+                    styles.accountCard,
+                    { borderLeftColor: acc.color || "#0A84FF" },
+                    isActive && {
+                      borderColor: acc.color || "#0A84FF",
+                      backgroundColor: isDark ? "#2C2C2E" : "#E5E5EA",
+                    }
+                  ]}
+                  onPress={async () => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    const targetId = isActive ? "all" : acc.id;
+                    await updateSettings({ activeBalanceAccountId: targetId });
+                  }}
+                  onLongPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    setSelectedAccountForEdit(acc);
+                    setNewAccountName(acc.name);
+                    setNewAccountType(acc.type);
+                    setNewAccountInitialBalance(acc.initial_balance.toString());
+                    setNewAccountColor(acc.color || "#0A84FF");
+                    setShowAddAccountModal(true);
+                  }}
+                >
+                  <Text style={styles.accountCardName} numberOfLines={1}>{acc.name}</Text>
+                  <Text style={styles.accountCardType}>{acc.type}</Text>
+                  <Text style={styles.accountCardBalance}>
+                    {currencySymbol}{" "}
+                    {balance.toLocaleString("en-US", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
 
         {/* Segmented Switcher Control */}
@@ -1506,28 +1681,46 @@ export default function DailyLedger() {
 
                   {showAccountGrid && (
                     <View style={styles.gridSelector}>
-                      {ACCOUNTS.map((acc) => (
+                      {accounts.map((acc) => (
                         <TouchableOpacity
-                          key={acc}
+                          key={acc.id}
                           style={[
                             styles.gridItem,
-                            account === acc && styles.gridItemActive,
+                            account === acc.name && styles.gridItemActive,
+                            { borderLeftWidth: 3, borderLeftColor: acc.color || "#0A84FF" }
                           ]}
                           onPress={() => {
-                            setAccount(acc);
+                            setAccount(acc.name);
                             setShowAccountGrid(false);
                           }}
                         >
                           <Text
                             style={[
                               styles.gridItemText,
-                              account === acc && styles.gridItemTextActive,
+                              account === acc.name && styles.gridItemTextActive,
                             ]}
+                            numberOfLines={1}
                           >
-                            {acc}
+                            {acc.name}
                           </Text>
                         </TouchableOpacity>
                       ))}
+                      <TouchableOpacity
+                        style={[styles.gridItem, { backgroundColor: "#2C2C2E", borderColor: "#3A3A3C" }]}
+                        onPress={() => {
+                          setShowAccountGrid(false);
+                          setShowAddAccountModal(true);
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.gridItemText,
+                            { color: "#0A84FF", fontWeight: "700" }
+                          ]}
+                        >
+                          + Add New
+                        </Text>
+                      </TouchableOpacity>
                     </View>
                   )}
                 </View>
@@ -1661,6 +1854,114 @@ export default function DailyLedger() {
                   }}
                 >
                   <Text style={styles.catCreateBtnText}>Create</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Create / Edit Account Modal */}
+        <Modal
+          animationType="fade"
+          transparent={true}
+          visible={showAddAccountModal}
+          onRequestClose={handleCloseAccountModal}
+        >
+          <View style={styles.catModalBackdrop}>
+            <View style={styles.catModalContent}>
+              <Text style={styles.catModalTitle}>
+                {selectedAccountForEdit ? "Edit Account" : "Add Account"}
+              </Text>
+
+              <View style={styles.catFormItem}>
+                <Text style={styles.catFormLabel}>Account Name</Text>
+                <TextInput
+                  placeholder="e.g. Card, Savings, Cash"
+                  placeholderTextColor="#8E8E93"
+                  style={styles.catTextInput}
+                  value={newAccountName}
+                  onChangeText={setNewAccountName}
+                />
+              </View>
+
+              <View style={styles.catFormItem}>
+                <Text style={styles.catFormLabel}>Account Type</Text>
+                <View style={styles.accountTypeRow}>
+                  {["Cash", "Card", "Savings", "Other"].map((t) => (
+                    <TouchableOpacity
+                      key={t}
+                      style={[
+                        styles.accountTypeBtn,
+                        newAccountType === t && styles.accountTypeBtnActive,
+                      ]}
+                      onPress={() => setNewAccountType(t)}
+                    >
+                      <Text
+                        style={[
+                          styles.accountTypeBtnText,
+                          newAccountType === t && styles.accountTypeBtnTextActive,
+                        ]}
+                      >
+                        {t}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.catFormItem}>
+                <Text style={styles.catFormLabel}>Initial Balance</Text>
+                <TextInput
+                  placeholder="0.00"
+                  placeholderTextColor="#8E8E93"
+                  keyboardType="numeric"
+                  style={styles.catTextInput}
+                  value={newAccountInitialBalance}
+                  onChangeText={setNewAccountInitialBalance}
+                />
+              </View>
+
+              <View style={styles.catFormItem}>
+                <Text style={styles.catFormLabel}>Visual Theme (Color)</Text>
+                <View style={styles.colorPresetRow}>
+                  {["#34C759", "#0A84FF", "#5856D6", "#FF9500", "#FF3B30", "#AF52DE"].map((col) => (
+                    <TouchableOpacity
+                      key={col}
+                      style={[
+                        styles.colorPresetCircle,
+                        { backgroundColor: col },
+                        newAccountColor === col && styles.colorPresetCircleActive,
+                      ]}
+                      onPress={() => setNewAccountColor(col)}
+                    />
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.catBtnRow}>
+                {selectedAccountForEdit ? (
+                  <TouchableOpacity
+                    style={styles.accountDeleteBtn}
+                    onPress={() => handleDeleteAccount(selectedAccountForEdit.id)}
+                  >
+                    <Text style={styles.accountDeleteBtnText}>Delete</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.catCancelBtn}
+                    onPress={handleCloseAccountModal}
+                  >
+                    <Text style={styles.catCancelBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                )}
+
+                <TouchableOpacity
+                  style={styles.catCreateBtn}
+                  onPress={handleSaveAccount}
+                >
+                  <Text style={styles.catCreateBtnText}>
+                    {selectedAccountForEdit ? "Save" : "Create"}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -3811,5 +4112,124 @@ const staticStyles = StyleSheet.create({
     color: "#8E8E93",
     fontSize: 11,
     fontWeight: "500",
+  },
+  // Dynamic Accounts UI Styles
+  accountsSection: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+  },
+  accountsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  accountsSectionTitle: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  addAccountBtn: {
+    backgroundColor: "#2C2C2E",
+    borderWidth: 1,
+    borderColor: "#3A3A3C",
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+  },
+  addAccountBtnText: {
+    color: "#0A84FF",
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  accountsScrollContent: {
+    paddingRight: 16,
+  },
+  accountCard: {
+    backgroundColor: "#1C1C1E",
+    borderWidth: 1,
+    borderColor: "#2C2C2E",
+    borderLeftWidth: 4,
+    borderRadius: 12,
+    padding: 12,
+    marginRight: 10,
+    minWidth: 120,
+    justifyContent: "center",
+  },
+  accountCardName: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
+    marginBottom: 2,
+  },
+  accountCardType: {
+    color: "#8E8E93",
+    fontSize: 10,
+    marginBottom: 8,
+  },
+  accountCardBalance: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  accountTypeRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 6,
+  },
+  accountTypeBtn: {
+    flex: 1,
+    backgroundColor: "#2C2C2E",
+    borderWidth: 1,
+    borderColor: "#3A3A3C",
+    paddingVertical: 8,
+    borderRadius: 6,
+    marginHorizontal: 2,
+    alignItems: "center",
+  },
+  accountTypeBtnActive: {
+    borderColor: "#0A84FF",
+    backgroundColor: "#0A84FF20",
+  },
+  accountTypeBtnText: {
+    color: "#8E8E93",
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  accountTypeBtnTextActive: {
+    color: "#0A84FF",
+  },
+  colorPresetRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 6,
+  },
+  colorPresetCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
+  colorPresetCircleActive: {
+    borderColor: "#FFFFFF",
+  },
+  accountDeleteBtn: {
+    flex: 1,
+    backgroundColor: "#FF3B3020",
+    borderWidth: 1,
+    borderColor: "#FF3B30",
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginRight: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  accountDeleteBtnText: {
+    color: "#FF3B30",
+    fontSize: 14,
+    fontWeight: "700",
   },
 });

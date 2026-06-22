@@ -9,7 +9,7 @@ import {
     Plus,
     Trash2
 } from "lucide-react-native";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getThemedStyles } from "@/utils/themeHelper";
 import {
     Alert,
@@ -53,7 +53,6 @@ const INCOME_CATEGORIES = [
   "Petty cash",
   "Other",
 ];
-const ACCOUNTS = ["Cash", "Accounts", "Card"];
 
 const CATEGORY_EMOJIS: Record<string, string> = {
   Food: "🍜",
@@ -83,6 +82,7 @@ const CATEGORY_EMOJIS: Record<string, string> = {
 export default function BudgetScreen() {
   const {
     transactions,
+    accounts,
     debts,
     loans,
     categoryBudgets,
@@ -119,6 +119,13 @@ export default function BudgetScreen() {
     null,
   );
   const isEditingTemplate = editingTemplateId !== null;
+
+  // Default to first account name if current selection becomes invalid or empty
+  useEffect(() => {
+    if (accounts.length > 0 && !accounts.some((a) => a.name.toLowerCase() === tmplAccount.toLowerCase())) {
+      setTmplAccount(accounts[0].name);
+    }
+  }, [accounts, tmplAccount]);
 
   const handleAddRecurringTemplate = async () => {
     const amt = parseFloat(tmplAmount);
@@ -886,20 +893,21 @@ export default function BudgetScreen() {
               <View style={styles.formItem}>
                 <Text style={styles.formLabel}>Select Account</Text>
                 <View style={styles.accountRow}>
-                  {ACCOUNTS.map((acc) => {
-                    const isSelected = tmplAccount === acc;
+                  {accounts.map((acc) => {
+                    const isSelected = tmplAccount === acc.name;
                     return (
                       <TouchableOpacity
-                        key={acc}
+                        key={acc.id}
                         style={[
                           styles.accountChip,
                           isSelected && styles.accountChipSelected,
+                          isSelected && acc.color ? { backgroundColor: acc.color, borderColor: acc.color } : null,
                         ]}
                         onPress={() => {
                           Haptics.impactAsync(
                             Haptics.ImpactFeedbackStyle.Light,
                           );
-                          setTmplAccount(acc);
+                          setTmplAccount(acc.name);
                         }}
                       >
                         <Text
@@ -907,8 +915,9 @@ export default function BudgetScreen() {
                             styles.accountChipText,
                             isSelected && styles.whiteText,
                           ]}
+                          numberOfLines={1}
                         >
-                          {acc}
+                          {acc.name}
                         </Text>
                       </TouchableOpacity>
                     );

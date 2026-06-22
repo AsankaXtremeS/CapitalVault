@@ -199,6 +199,45 @@ CREATE INDEX IF NOT EXISTS idx_loans_user ON public.loans_installments(user_id);
 CREATE INDEX IF NOT EXISTS idx_categories_user ON public.custom_categories(user_id);
 CREATE INDEX IF NOT EXISTS idx_recurring_user ON public.recurring_templates(user_id);
 
+-- --------------------------------------------------------------------
+-- 7. ACCOUNTS TABLE
+-- --------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.accounts (
+    id TEXT PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    initial_balance NUMERIC DEFAULT 0.0,
+    color TEXT,
+    icon TEXT,
+    updated_at BIGINT NOT NULL,
+    UNIQUE (user_id, name)
+);
+
+-- Enable Row Level Security (RLS) for Accounts
+ALTER TABLE public.accounts ENABLE ROW LEVEL SECURITY;
+
+-- Create Policies for Accounts (isolate data per user)
+CREATE POLICY "Users can only read their own accounts" 
+    ON public.accounts FOR SELECT 
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can only insert their own accounts" 
+    ON public.accounts FOR INSERT 
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can only update their own accounts" 
+    ON public.accounts FOR UPDATE 
+    USING (auth.uid() = user_id) 
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can only delete their own accounts" 
+    ON public.accounts FOR DELETE 
+    USING (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_accounts_user ON public.accounts(user_id);
+
 -- ====================================================================
 -- MIGRATION SCRIPT END
 -- ====================================================================
+
