@@ -1,7 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Animated, PanResponder } from 'react-native';
-import { Calculator, X, CornerDownLeft } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
+import { Calculator, X, CornerDownLeft } from "@/components/icons";
+import * as Haptics from "@/utils/haptics";
 import { useLocalStore } from '@/hooks/useLocalStore';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -13,164 +13,107 @@ interface FloatingCalculatorProps {
   onInsert: (value: string) => void;
 }
 
-export default function FloatingCalculator({ onInsert }: FloatingCalculatorProps) {
-  const { isCalculatorOpen, openCalculator, closeCalculator } = useLocalStore();
-  const [isOpen, setIsOpen] = useState(false);
-  const [expression, setExpression] = useState('');
-  const [result, setResult] = useState('0');
-
+// Drag/snap behaviour for the bubble and the open panel. Lives outside React so the
+// gesture callbacks can keep mutable coordinates without touching refs during render.
+function createCalculatorGesture() {
   // Align initial coordinates perfectly floating directly above the main FAB button
   const initialX = SCREEN_WIDTH - BUBBLE_SIZE - 24;
   const initialY = SCREEN_HEIGHT - BUBBLE_SIZE - 160; // Perfectly calculated: tab bar (64) + FAB bottom (24) + FAB height (60) + gap (12)
 
-  // Track snapped positions to adjust panel expansion dynamically
-  const [snappedX, setSnappedX] = useState(initialX);
-  const [snappedY, setSnappedY] = useState(initialY);
+  // Current panel/bubble coordinates, and the bubble's resting spot to return to on close
+  let position = { x: initialX, y: initialY };
+  let snapped = { x: initialX, y: initialY };
+  const pan = new Animated.ValueXY({ x: initialX, y: initialY });
 
-  // Track coordinates via absolute references to avoid private variable checks
-  const position = useRef({ x: initialX, y: initialY }).current;
-  const pan = useRef(new Animated.ValueXY({ x: initialX, y: initialY })).current;
+  const springTo = (target: { x: number; y: number }, friction: number, tension: number) => {
+    position = { ...target };
+    Animated.spring(pan, { toValue: target, useNativeDriver: false, friction, tension }).start();
+  };
 
   // React Native PanResponder for seamless dragging anywhere on the screen
-  const isOpenRef = useRef(isOpen);
-  isOpenRef.current = isOpen;
+  const panResponder = PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onStartShouldSetPanResponderCapture: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponderCapture: () => true,
+    onPanResponderGrant: () => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    },
+    onPanResponderMove: (_e, gestureState) => {
+      // Apply relative drag translations
+      pan.setValue({
+        x: position.x + gestureState.dx,
+        y: position.y + gestureState.dy,
+      });
+    },
+    onPanResponderRelease: (_e, gestureState) => {
+      const currentX = position.x + gestureState.dx;
+      const currentY = position.y + gestureState.dy;
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onStartShouldSetPanResponderCapture: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponderCapture: () => true,
-      onPanResponderGrant: (e, gestureState) => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      },
-      onPanResponderMove: (e, gestureState) => {
-        // Apply relative drag translations
-        pan.setValue({
-          x: position.x + gestureState.dx,
-          y: position.y + gestureState.dy,
-        });
-      },
-      onPanResponderRelease: (e, gestureState) => {
-        const isCurrentlyOpen = isOpenRef.current;
-        if (!isCurrentlyOpen) {
-          // Detect a clean tap (minimal finger movement)
-          const distance = Math.sqrt(gestureState.dx * gestureState.dx + gestureState.dy * gestureState.dy);
-          const isTap = distance < 8;
-          
-          if (isTap) {
-            toggleCalculator();
-            return;
-          }
-
-          const currentX = position.x + gestureState.dx;
-          const currentY = position.y + gestureState.dy;
-
-          // Snap logic to closest vertical border
-          const isLeft = currentX < SCREEN_WIDTH / 2 - BUBBLE_SIZE / 2;
-          const snapX = isLeft ? 20 : SCREEN_WIDTH - BUBBLE_SIZE - 24;
-          
-          // Prevent overlapping with the Add FAB button on the right side
-          const maxY = isLeft 
-            ? SCREEN_HEIGHT - BUBBLE_SIZE - 80 
-            : SCREEN_HEIGHT - BUBBLE_SIZE - 160; // Keep space for the FAB and gap on the right
-          
-          const clampedY = Math.max(60, Math.min(maxY, currentY));
-
-          // Save final snapped positions
-          position.x = snapX;
-          position.y = clampedY;
-          
-          setSnappedX(snapX);
-          setSnappedY(clampedY);
-
-          Animated.spring(pan, {
-            toValue: { x: snapX, y: clampedY },
-            useNativeDriver: false,
-            friction: 6,
-            tension: 40,
-          }).start();
-        } else {
-          // Draggable Open Calculator Panel Clamping
-          const currentX = position.x + gestureState.dx;
-          const currentY = position.y + gestureState.dy;
-
-          // Keep panel fully inside screen boundaries
-          const clampedX = Math.max(10, Math.min(SCREEN_WIDTH - CALC_WIDTH - 10, currentX));
-          const clampedY = Math.max(40, Math.min(SCREEN_HEIGHT - CALC_HEIGHT - 60, currentY));
-
-          position.x = clampedX;
-          position.y = clampedY;
-
-          Animated.spring(pan, {
-            toValue: { x: clampedX, y: clampedY },
-            useNativeDriver: false,
-            friction: 7,
-            tension: 40,
-          }).start();
+      if (!useLocalStore.getState().isCalculatorOpen) {
+        // Detect a clean tap (minimal finger movement)
+        const distance = Math.sqrt(gestureState.dx * gestureState.dx + gestureState.dy * gestureState.dy);
+        if (distance < 8) {
+          useLocalStore.getState().openCalculator();
+          return;
         }
-      },
-      onPanResponderTerminationRequest: () => false,
-      onShouldBlockNativeResponder: () => true,
-    })
-  ).current;
 
-  // React to programmatic store calculator toggles
-  useEffect(() => {
-    if (isCalculatorOpen && !isOpen) {
-      toggleCalculator();
-    } else if (!isCalculatorOpen && isOpen) {
-      toggleCalculator();
-    }
-  }, [isCalculatorOpen]);
+        // Snap logic to closest vertical border
+        const isLeft = currentX < SCREEN_WIDTH / 2 - BUBBLE_SIZE / 2;
+        const snapX = isLeft ? 20 : SCREEN_WIDTH - BUBBLE_SIZE - 24;
 
-  const toggleCalculator = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
-    if (!isOpen) {
-      // Open Calculator: Animate to Center of the screen!
-      const centerX = (SCREEN_WIDTH - CALC_WIDTH) / 2;
-      const centerY = (SCREEN_HEIGHT - CALC_HEIGHT) / 2;
-      
-      // Save current coordinates as snapped coordinates to return to later
-      setSnappedX(position.x);
-      setSnappedY(position.y);
-      
-      position.x = centerX;
-      position.y = centerY;
-      
-      Animated.spring(pan, {
-        toValue: { x: centerX, y: centerY },
-        useNativeDriver: false,
-        friction: 7,
-        tension: 35,
-      }).start();
+        // Prevent overlapping with the Add FAB button on the right side
+        const maxY = isLeft
+          ? SCREEN_HEIGHT - BUBBLE_SIZE - 80
+          : SCREEN_HEIGHT - BUBBLE_SIZE - 160; // Keep space for the FAB and gap on the right
 
-      if (!isCalculatorOpen) {
-        openCalculator();
+        snapped = { x: snapX, y: Math.max(60, Math.min(maxY, currentY)) };
+        springTo(snapped, 6, 40);
+      } else {
+        // Keep the open panel fully inside screen boundaries
+        springTo(
+          {
+            x: Math.max(10, Math.min(SCREEN_WIDTH - CALC_WIDTH - 10, currentX)),
+            y: Math.max(40, Math.min(SCREEN_HEIGHT - CALC_HEIGHT - 60, currentY)),
+          },
+          7,
+          40,
+        );
       }
-    } else {
-      // Close Calculator: Return back to snapped bubble position!
-      const targetX = snappedX;
-      const targetY = snappedY;
-      
-      position.x = targetX;
-      position.y = targetY;
-      
-      Animated.spring(pan, {
-        toValue: { x: targetX, y: targetY },
-        useNativeDriver: false,
-        friction: 7,
-        tension: 35,
-      }).start();
+    },
+    onPanResponderTerminationRequest: () => false,
+    onShouldBlockNativeResponder: () => true,
+  });
 
-      if (isCalculatorOpen) {
-        closeCalculator();
-      }
-    }
-
-    setIsOpen(!isOpen);
+  return {
+    pan,
+    panHandlers: panResponder.panHandlers,
+    // Open: centre of the screen. Close: back to the snapped bubble position.
+    setOpen: (isOpen: boolean) => {
+      const target = isOpen
+        ? { x: (SCREEN_WIDTH - CALC_WIDTH) / 2, y: (SCREEN_HEIGHT - CALC_HEIGHT) / 2 }
+        : snapped;
+      if (target.x === position.x && target.y === position.y) return;
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      springTo(target, 7, 35);
+    },
   };
+}
+
+export default function FloatingCalculator({ onInsert }: FloatingCalculatorProps) {
+  // The store is the single source of truth for open/closed, so the bubble, the keypad
+  // shortcut and the Insert button can never get out of sync.
+  const isOpen = useLocalStore((state) => state.isCalculatorOpen);
+  const closeCalculator = useLocalStore((state) => state.closeCalculator);
+  const [expression, setExpression] = useState('');
+  const [result, setResult] = useState('0');
+  const [gesture] = useState(createCalculatorGesture);
+  const { pan, panHandlers } = gesture;
+
+  // Animate between the bubble spot and the screen centre whenever the calculator opens/closes
+  useEffect(() => {
+    gesture.setOpen(isOpen);
+  }, [isOpen, gesture]);
 
   const updateLiveResult = (expr: string) => {
     if (!expr.trim()) {
@@ -204,7 +147,7 @@ export default function FloatingCalculator({ onInsert }: FloatingCalculatorProps
           setResult(Number(evalResult.toFixed(2)).toString());
         }
       }
-    } catch (e) {
+    } catch {
       // Ignore intermediate syntax failures while typing formula
     }
   };
@@ -286,7 +229,7 @@ export default function FloatingCalculator({ onInsert }: FloatingCalculatorProps
           setExpression(finalVal);
           setResult(finalVal);
         }
-      } catch (err) {
+      } catch {
         setResult('Error');
       }
       return;
@@ -301,7 +244,7 @@ export default function FloatingCalculator({ onInsert }: FloatingCalculatorProps
   const handleInsert = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     onInsert(result);
-    setIsOpen(false);
+    closeCalculator();
   };
 
   return (
@@ -320,7 +263,7 @@ export default function FloatingCalculator({ onInsert }: FloatingCalculatorProps
         {!isOpen ? (
           // Draggable Floating Bubble (Uses standard panHandlers for 100% touch capture)
           <View
-            {...panResponder.panHandlers}
+            {...panHandlers}
             style={styles.bubble}
           >
             <Calculator color="#FFFFFF" size={26} />
@@ -329,12 +272,12 @@ export default function FloatingCalculator({ onInsert }: FloatingCalculatorProps
           // Expanded Glassmorphism Calculator panel fitting 100% inside container
           <View style={styles.calcPanel}>
             {/* Header Controls (Draggable when open!) */}
-            <View {...panResponder.panHandlers} style={styles.header}>
+            <View {...panHandlers} style={styles.header}>
               <Text style={styles.headerTitle}>In-App Calculator ✥</Text>
             </View>
 
             {/* Close Button positioned absolutely (sibling to prevent PanResponder touch intercept) */}
-            <TouchableOpacity onPress={toggleCalculator} style={styles.closeBtn}>
+            <TouchableOpacity onPress={closeCalculator} style={styles.closeBtn}>
               <X color="#8E8E93" size={18} />
             </TouchableOpacity>
 

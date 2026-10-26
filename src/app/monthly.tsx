@@ -1,8 +1,8 @@
 import React, { useMemo,  useState } from 'react';
 import { getThemedStyles } from '@/utils/themeHelper';;
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity } from 'react-native';
-import { ChevronLeft, ChevronRight } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
+import { ChevronLeft, ChevronRight } from "@/components/icons";
+import * as Haptics from "@/utils/haptics";
 import { useLocalStore, Transaction } from '@/hooks/useLocalStore';
 
 export default function MonthlyView() {

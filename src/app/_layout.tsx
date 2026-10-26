@@ -13,21 +13,24 @@ import {
   HandCoins,
   Percent,
   PiggyBank,
-} from "lucide-react-native";
+} from "@/components/icons";
 import React from "react";
 import {
   Animated,
+  AppState,
+  ColorValue,
   Image,
   StyleSheet,
   Text,
   TouchableOpacity,
+  TouchableOpacityProps,
   View
 } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 interface AnimatedTabBarIconProps {
-  IconComponent: any;
-  color: string;
+  IconComponent: React.ComponentType<{ color?: ColorValue; size?: number }>;
+  color: ColorValue;
   size: number;
   focused: boolean;
 }
@@ -38,10 +41,10 @@ function AnimatedTabBarIcon({
   size,
   focused,
 }: AnimatedTabBarIconProps) {
-  const scaleAnim = React.useRef(
-    new Animated.Value(focused ? 1.15 : 1.0),
-  ).current;
-  const bounceAnim = React.useRef(new Animated.Value(focused ? -2 : 0)).current;
+  const [scaleAnim] = React.useState(
+    () => new Animated.Value(focused ? 1.15 : 1.0),
+  );
+  const [bounceAnim] = React.useState(() => new Animated.Value(focused ? -2 : 0));
 
   React.useEffect(() => {
     Animated.parallel([
@@ -58,7 +61,7 @@ function AnimatedTabBarIcon({
         useNativeDriver: true,
       }),
     ]).start();
-  }, [focused]);
+  }, [focused, scaleAnim, bounceAnim]);
 
   return (
     <Animated.View
@@ -86,7 +89,7 @@ export default function RootLayout() {
   } = useLocalStore();
   const [animationComplete, setAnimationComplete] = React.useState(false);
   const [isUnlocked, setIsUnlocked] = React.useState(false);
-  const progressAnim = React.useRef(new Animated.Value(0)).current;
+  const [progressAnim] = React.useState(() => new Animated.Value(0));
   const themeColors = useTheme();
   const isDark = theme === 'dark';
   const insets = useSafeAreaInsets();
@@ -118,6 +121,14 @@ export default function RootLayout() {
     }).start(() => {
       setAnimationComplete(true);
     });
+  }, [loadAllData, loadCloudSyncSettings, progressAnim]);
+
+  // Re-lock the app whenever it goes to the background, not just on cold start
+  React.useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "background") setIsUnlocked(false);
+    });
+    return () => subscription.remove();
   }, []);
 
   if (!isDbLoaded || !animationComplete) {
@@ -170,14 +181,14 @@ export default function RootLayout() {
 
       {/* Main Tab Router shell */}
       <Tabs
+        detachInactiveScreens={false} // Prevents Android native view attach/detach 1-frame white flicker
         screenOptions={{
           headerShown: false,
           tabBarActiveTintColor: "#1FA89B", // Teal-Green active accent
           tabBarInactiveTintColor: themeColors.textSecondary, // Dynamic secondary text color
-          detachInactiveScreens: false, // Prevents Android native view attach/detach 1-frame white flicker
-          sceneContainerStyle: { backgroundColor: themeColors.background }, // Dynamic container background
+          sceneStyle: { backgroundColor: themeColors.background }, // Dynamic container background
           tabBarButton: (props) => (
-            <TouchableOpacity {...props} activeOpacity={0.75} />
+            <TouchableOpacity {...(props as TouchableOpacityProps)} activeOpacity={0.75} />
           ),
           tabBarStyle: {
             backgroundColor: themeColors.backgroundElement, // Dynamic tab bar background
@@ -275,13 +286,7 @@ export default function RootLayout() {
             ),
           }}
         />
-        {/* Hide default routing files that are not tabs */}
-        <Tabs.Screen
-          name="explore"
-          options={{
-            href: null,
-          }}
-        />
+        {/* Hide routing files that are not tabs */}
         <Tabs.Screen
           name="settings"
           options={{

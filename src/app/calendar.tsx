@@ -1,8 +1,8 @@
 import React, { useMemo,  useState } from 'react';
 import { getThemedStyles } from '@/utils/themeHelper';;
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
-import { ChevronLeft, ChevronRight, SlidersHorizontal } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
+import { ChevronLeft, ChevronRight, SlidersHorizontal } from "@/components/icons";
+import * as Haptics from "@/utils/haptics";
 import { useLocalStore } from '@/hooks/useLocalStore';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -16,8 +16,8 @@ export default function CalendarView() {
 
   const handleMonthChange = (direction: 'next' | 'prev') => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const newMonth = new Date(selectedMonth);
-    newMonth.setMonth(selectedMonth.getMonth() + (direction === 'next' ? 1 : -1));
+    // Anchor to the 1st so e.g. Jan 31 -> Feb doesn't overflow into March
+    const newMonth = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + (direction === 'next' ? 1 : -1), 1);
     setSelectedMonth(newMonth);
   };
 

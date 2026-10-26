@@ -91,8 +91,8 @@ export function generateAmortizationSchedule(
     totalInterest += interestPaid;
 
     // Calculate current payment date
-    const paymentDate = new Date(startDate);
-    paymentDate.setMonth(startDate.getMonth() + month - 1);
+    // Anchor to the 1st so a loan starting on the 29th-31st doesn't skip short months
+    const paymentDate = new Date(startDate.getFullYear(), startDate.getMonth() + month - 1, 1);
     const dateString = paymentDate.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',

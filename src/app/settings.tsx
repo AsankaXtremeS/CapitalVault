@@ -4,7 +4,7 @@ import { useLocalStore } from '@/hooks/useLocalStore';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as Haptics from 'expo-haptics';
-import { ChevronLeft, Save, FileDown, Bell, Moon, Sun, Lock, Vibrate, DollarSign, Wallet, Shield } from 'lucide-react-native';
+import { ChevronLeft, Save, FileDown, Bell, Moon, Sun, Lock, Vibrate, DollarSign, Wallet, Shield } from "@/components/icons";
 import { useRouter } from 'expo-router';
 import { getThemedStyles } from '@/utils/themeHelper';
 
@@ -380,7 +380,7 @@ export default function SettingsScreen() {
               
               <Text style={styles.privacyHeading}>2. Biometrics & Device Security</Text>
               <Text style={styles.privacyParagraph}>
-                App lock PINs and biometric access tokens are stored securely in your device's native secure enclave (via expo-secure-store). We have zero access to your PIN or biometric data.
+                App lock PINs and biometric access tokens are stored securely in your device&apos;s native secure enclave (via expo-secure-store). We have zero access to your PIN or biometric data.
               </Text>
               
               <Text style={styles.privacyHeading}>3. User-Initiated Cloud Sync</Text>

@@ -8,7 +8,7 @@ import * as SecureStore from 'expo-secure-store';
 // Loaded dynamically from your root `.env` file (via Expo's EXPO_PUBLIC_ prefix).
 // If these environment variables are missing, the app defaults to "Simulated Cloud Mode".
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || ''; 
-const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || ''; 
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_KEY || '';
 
 export const isSupabaseConfigured = Boolean(
   SUPABASE_URL.trim() && SUPABASE_ANON_KEY.trim()

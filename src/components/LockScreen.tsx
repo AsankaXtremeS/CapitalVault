@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, Animated } from 'react-native';
 import { useLocalStore } from '../hooks/useLocalStore';
 import * as LocalAuthentication from 'expo-local-authentication';
-import * as Haptics from 'expo-haptics';
-import { Fingerprint, Delete } from 'lucide-react-native';
+import * as Haptics from "@/utils/haptics";
+import { Fingerprint, Delete } from "@/components/icons";
 
 interface LockScreenProps {
   onUnlock: () => void;
@@ -12,13 +12,7 @@ interface LockScreenProps {
 export default function LockScreen({ onUnlock }: LockScreenProps) {
   const { appPin, isBiometricEnabled, simulateAppReset, hapticsEnabled } = useLocalStore();
   const [pinEntry, setPinEntry] = useState('');
-  const shakeAnim = React.useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (isBiometricEnabled) {
-      handleBiometricAuth();
-    }
-  }, [isBiometricEnabled]);
+  const [shakeAnim] = useState(() => new Animated.Value(0));
 
   const handleBiometricAuth = async () => {
     const hasHardware = await LocalAuthentication.hasHardwareAsync();
@@ -35,6 +29,14 @@ export default function LockScreen({ onUnlock }: LockScreenProps) {
       }
     }
   };
+
+  useEffect(() => {
+    if (isBiometricEnabled) {
+      handleBiometricAuth();
+    }
+    // Prompt once when the lock screen appears
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isBiometricEnabled]);
 
   const handleKeyPress = (num: string) => {
     if (pinEntry.length < 4) {

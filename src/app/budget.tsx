@@ -1,14 +1,14 @@
 import { useLocalStore } from "@/hooks/useLocalStore";
 import AnimatedScreenWrapper from "@/components/AnimatedScreenWrapper";
 import { generateBudgetReportPDF } from "@/utils/pdfGenerator";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/utils/haptics";
 import {
     ChevronLeft,
     ChevronRight,
     Database,
     Plus,
     Trash2
-} from "lucide-react-native";
+} from "@/components/icons";
 import { useEffect, useMemo, useState } from "react";
 import { getThemedStyles } from "@/utils/themeHelper";
 import {
@@ -112,7 +112,7 @@ export default function BudgetScreen() {
   const [tmplType, setTmplType] = useState<"income" | "expense">("expense");
   const [tmplAmount, setTmplAmount] = useState("");
   const [tmplCategory, setTmplCategory] = useState("");
-  const [tmplAccount, setTmplAccount] = useState("Cash");
+  const [selectedTmplAccount, setTmplAccount] = useState("Cash");
   const [tmplDayOfMonth, setTmplDayOfMonth] = useState("");
   const [tmplNote, setTmplNote] = useState("");
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(
@@ -120,12 +120,14 @@ export default function BudgetScreen() {
   );
   const isEditingTemplate = editingTemplateId !== null;
 
-  // Default to first account name if current selection becomes invalid or empty
-  useEffect(() => {
-    if (accounts.length > 0 && !accounts.some((a) => a.name.toLowerCase() === tmplAccount.toLowerCase())) {
-      setTmplAccount(accounts[0].name);
-    }
-  }, [accounts, tmplAccount]);
+  // Fall back to the first account if the selection doesn't exist (e.g. no "Cash" account).
+  // When editing, keep the template's own account even if it was since deleted.
+  const tmplAccount =
+    isEditingTemplate ||
+    accounts.length === 0 ||
+    accounts.some((a) => a.name.toLowerCase() === selectedTmplAccount.toLowerCase())
+      ? selectedTmplAccount
+      : accounts[0].name;
 
   const handleAddRecurringTemplate = async () => {
     const amt = parseFloat(tmplAmount);
@@ -198,10 +200,8 @@ export default function BudgetScreen() {
 
   const handleMonthChange = (direction: "next" | "prev") => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const newMonth = new Date(selectedMonth);
-    newMonth.setMonth(
-      selectedMonth.getMonth() + (direction === "next" ? 1 : -1),
-    );
+    // Anchor to the 1st so e.g. Jan 31 -> Feb doesn't overflow into March
+    const newMonth = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + (direction === "next" ? 1 : -1), 1);
     setSelectedMonth(newMonth);
   };
 

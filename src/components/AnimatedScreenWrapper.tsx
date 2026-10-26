@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Animated, StyleSheet } from "react-native";
 import { useNavigation } from "expo-router";
 import { useTheme } from "@/hooks/use-theme";
@@ -9,8 +9,8 @@ interface AnimatedScreenWrapperProps {
 
 export default function AnimatedScreenWrapper({ children }: AnimatedScreenWrapperProps) {
   const navigation = useNavigation();
-  const [isFocused, setIsFocused] = useState(true);
-  const fadeAnim = useRef(new Animated.Value(0.95)).current; // Snappy micro-fade (95% -> 100%) with NO scale changes
+  const [isFocused, setIsFocused] = useState(() => navigation.isFocused());
+  const [fadeAnim] = useState(() => new Animated.Value(0.95)); // Snappy micro-fade (95% -> 100%) with NO scale changes
   const theme = useTheme();
 
   useEffect(() => {
@@ -22,9 +22,6 @@ export default function AnimatedScreenWrapper({ children }: AnimatedScreenWrappe
     const unsubscribeBlur = navigation.addListener('blur', () => {
       setIsFocused(false);
     });
-
-    // Check current focus state in case it's already focused on mount
-    setIsFocused(navigation.isFocused());
 
     return () => {
       unsubscribeFocus();
@@ -44,7 +41,7 @@ export default function AnimatedScreenWrapper({ children }: AnimatedScreenWrappe
     } else {
       fadeAnim.setValue(0.95);
     }
-  }, [isFocused]);
+  }, [isFocused, fadeAnim]);
 
   return (
     <Animated.View

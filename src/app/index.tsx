@@ -2,7 +2,7 @@ import AnimatedScreenWrapper from "@/components/AnimatedScreenWrapper";
 import NumericalKeyboard from "@/components/NumericalKeyboard";
 import { Transaction, useLocalStore } from "@/hooks/useLocalStore";
 import { getThemedStyles } from "@/utils/themeHelper";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/utils/haptics";
 import { useRouter } from "expo-router";
 import {
   AlertTriangle,
@@ -21,7 +21,7 @@ import {
   Settings,
   Trash2,
   User
-} from "lucide-react-native";
+} from "@/components/icons";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -108,6 +108,8 @@ const getDayBadgeStyle = (date: Date) => {
   }
 };
 
+const createAccountId = () => `acc-${Date.now()}`;
+
 export default function DailyLedger() {
   const {
     transactions,
@@ -132,7 +134,6 @@ export default function DailyLedger() {
     toggleAutoCloudSync,
     loadCloudSyncSettings,
     triggerCloudSync,
-    calculatorPipeValue,
     clearPipeValue,
     openCalculator,
     customCategories,
@@ -165,7 +166,7 @@ export default function DailyLedger() {
   const [txType, setTxType] = useState<"income" | "expense">("expense");
   const [amount, setAmount] = useState("0");
   const [category, setCategory] = useState("Other");
-  const [account, setAccount] = useState("Cash");
+  const [selectedAccount, setAccount] = useState("Cash");
   const [note, setNote] = useState("");
   const [description, setDescription] = useState("");
   const [txDate, setTxDate] = useState<Date>(new Date());
@@ -197,12 +198,14 @@ export default function DailyLedger() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSuccess, setAuthSuccess] = useState<string | null>(null);
 
-  // Default to first account name if current selection becomes invalid or empty
-  useEffect(() => {
-    if (accounts.length > 0 && !accounts.some((a) => a.name.toLowerCase() === account.toLowerCase())) {
-      setAccount(accounts[0].name);
-    }
-  }, [accounts]);
+  // Fall back to the first account if the selection doesn't exist (e.g. no "Cash" account).
+  // When editing, keep the transaction's own account even if it was since deleted.
+  const account =
+    editingTransactionId ||
+    accounts.length === 0 ||
+    accounts.some((a) => a.name.toLowerCase() === selectedAccount.toLowerCase())
+      ? selectedAccount
+      : accounts[0].name;
 
   // Account balance computation
   const getAccountBalance = (accName: string, initialBalance: number) => {
@@ -258,7 +261,7 @@ export default function DailyLedger() {
       });
     } else {
       await addAccount({
-        id: `acc-${Date.now()}`,
+        id: createAccountId(),
         name: newAccountName.trim(),
         type: newAccountType,
         initial_balance: initBal,
@@ -442,14 +445,19 @@ export default function DailyLedger() {
     return found ? found.emoji : "📦";
   };
 
-  // Subscribe to the global floating calculator pipe
+  // Subscribe to the global floating calculator pipe while the entry form is open
   useEffect(() => {
-    if (calculatorPipeValue && modalVisible) {
-      setAmount(calculatorPipeValue);
+    if (!modalVisible) return;
+    const applyPipedValue = (value: string | null) => {
+      if (!value) return;
+      setAmount(value);
       clearPipeValue();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
-  }, [calculatorPipeValue, modalVisible]);
+    };
+    // A value inserted before the form opened is applied once it does
+    queueMicrotask(() => applyPipedValue(useLocalStore.getState().calculatorPipeValue));
+    return useLocalStore.subscribe((state) => applyPipedValue(state.calculatorPipeValue));
+  }, [modalVisible, clearPipeValue]);
 
   // Segmented Controller Switcher State
   const [activeSegment, setActiveSegment] = useState<
@@ -513,26 +521,24 @@ export default function DailyLedger() {
 
   const handleMonthChange = (direction: "next" | "prev") => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const newMonth = new Date(selectedMonth);
-    newMonth.setMonth(
-      selectedMonth.getMonth() + (direction === "next" ? 1 : -1),
-    );
+    // Anchor to the 1st so e.g. Jan 31 -> Feb doesn't overflow into March
+    const newMonth = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + (direction === "next" ? 1 : -1), 1);
     setSelectedMonth(newMonth);
     setSelectedYear(newMonth.getFullYear());
   };
 
   const handlePrevPeriod = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const newMonth = new Date(selectedMonth);
-    newMonth.setMonth(selectedMonth.getMonth() - 1);
+    // Anchor to the 1st so e.g. Jan 31 -> Feb doesn't overflow into March
+    const newMonth = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 1, 1);
     setSelectedMonth(newMonth);
     setSelectedYear(newMonth.getFullYear());
   };
 
   const handleNextPeriod = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const newMonth = new Date(selectedMonth);
-    newMonth.setMonth(selectedMonth.getMonth() + 1);
+    // Anchor to the 1st so e.g. Jan 31 -> Feb doesn't overflow into March
+    const newMonth = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 1);
     setSelectedMonth(newMonth);
     setSelectedYear(newMonth.getFullYear());
   };
@@ -691,8 +697,8 @@ export default function DailyLedger() {
 
   const handlePickerMonthChange = (direction: "next" | "prev") => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const newMonth = new Date(pickerMonth);
-    newMonth.setMonth(pickerMonth.getMonth() + (direction === "next" ? 1 : -1));
+    // Anchor to the 1st so e.g. Jan 31 -> Feb doesn't overflow into March
+    const newMonth = new Date(pickerMonth.getFullYear(), pickerMonth.getMonth() + (direction === "next" ? 1 : -1), 1);
     setPickerMonth(newMonth);
   };
 
@@ -1035,7 +1041,7 @@ export default function DailyLedger() {
                   No transactions logged for this month.
                 </Text>
                 <Text style={styles.emptySubText}>
-                  Tap the "+" button below to log ledger entries.
+                  Tap the &quot;+&quot; button below to log ledger entries.
                 </Text>
               </View>
             )}

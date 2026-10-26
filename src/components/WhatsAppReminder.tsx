@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, Linking, Alert } from 'react-native';
-import { MessageSquare } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
+import { MessageSquare } from "@/components/icons";
+import * as Haptics from "@/utils/haptics";
 
 interface WhatsAppReminderProps {
   contactName: string;

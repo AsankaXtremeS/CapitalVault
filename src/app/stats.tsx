@@ -1,12 +1,12 @@
 import AnimatedScreenWrapper from "@/components/AnimatedScreenWrapper";
 import { useLocalStore } from "@/hooks/useLocalStore";
 import { getThemedStyles } from "@/utils/themeHelper";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/utils/haptics";
 import {
   ChevronLeft,
   ChevronRight,
   SlidersHorizontal,
-} from "lucide-react-native";
+} from "@/components/icons";
 import { useMemo, useState } from "react";
 import {
   Dimensions,
@@ -83,10 +83,8 @@ export default function StatsView() {
 
   const handleMonthChange = (direction: "next" | "prev") => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const newMonth = new Date(selectedMonth);
-    newMonth.setMonth(
-      selectedMonth.getMonth() + (direction === "next" ? 1 : -1),
-    );
+    // Anchor to the 1st so e.g. Jan 31 -> Feb doesn't overflow into March
+    const newMonth = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + (direction === "next" ? 1 : -1), 1);
     setSelectedMonth(newMonth);
     setActiveCategory(null);
     setHasUserSelected(false);
@@ -135,29 +133,30 @@ export default function StatsView() {
   };
 
   // Dynamic active category selection helper
-  const resolvedActiveCategory = useMemo(() => {
-    if (hasUserSelected) {
-      return activeCategory;
-    }
-    return categoryStats[0]?.name || null;
-  }, [activeCategory, categoryStats, hasUserSelected]);
+  const resolvedActiveCategory = hasUserSelected
+    ? activeCategory
+    : categoryStats[0]?.name || null;
 
   // SVG Geometry Dimensions
   const Cx = SCREEN_WIDTH / 2;
   const Cy = 140;
   const R = 75; // Standard pie radius
 
-  let accumulatedAngle = -Math.PI / 2; // Start polar at 12 o'clock (-90 deg)
+  const getAngleDelta = (percentage: number) =>
+    percentage >= 99.9 || categoryStats.length === 1
+      ? 2 * Math.PI - 0.0001 // Avoid identical start/end angles causing zero-length path in SVG arc
+      : (percentage / 100) * 2 * Math.PI;
 
   // Mathematically plot each slice and its connected lines/tags
-  const wedges = categoryStats.map((cat) => {
-    let angleDelta = (cat.percentage / 100) * 360 * (Math.PI / 180);
-    if (cat.percentage >= 99.9 || categoryStats.length === 1) {
-      angleDelta = 2 * Math.PI - 0.0001; // Avoid identical start/end angles causing zero-length path in SVG arc
-    }
-    const startAngle = accumulatedAngle;
-    const endAngle = accumulatedAngle + angleDelta;
-    accumulatedAngle = endAngle;
+  const wedges = categoryStats.map((cat, index) => {
+    const angleDelta = getAngleDelta(cat.percentage);
+    // Start polar at 12 o'clock (-90 deg), after all previous slices
+    const startAngle =
+      -Math.PI / 2 +
+      categoryStats
+        .slice(0, index)
+        .reduce((sum, prev) => sum + getAngleDelta(prev.percentage), 0);
+    const endAngle = startAngle + angleDelta;
 
     const midAngle = startAngle + angleDelta / 2;
     const largeArcFlag = cat.percentage > 50 ? 1 : 0;

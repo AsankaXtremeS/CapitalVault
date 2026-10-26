@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Dimensions } from 'react-native';
-import { Delete, Calculator, Check } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
+import { Delete, Calculator, Check } from "@/components/icons";
+import * as Haptics from "@/utils/haptics";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 

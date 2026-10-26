@@ -2,7 +2,7 @@ import AnimatedScreenWrapper from "@/components/AnimatedScreenWrapper";
 import WhatsAppReminder from "@/components/WhatsAppReminder";
 import { Debt, useLocalStore } from "@/hooks/useLocalStore";
 import { getThemedStyles } from "@/utils/themeHelper";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/utils/haptics";
 import {
   CheckCircle,
   Clock,
@@ -11,7 +11,7 @@ import {
   Trash2,
   TrendingUp,
   User,
-} from "lucide-react-native";
+} from "@/components/icons";
 import { useMemo, useState } from "react";
 import {
   Alert,
@@ -201,7 +201,7 @@ export default function DebtsLedger() {
                 No active entries locked here.
               </Text>
               <Text style={styles.emptySubText}>
-                Tap the "+" to log lendings or borrowings.
+                Tap the &quot;+&quot; to log lendings or borrowings.
               </Text>
             </View>
           ) : (

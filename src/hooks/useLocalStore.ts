@@ -1,5 +1,5 @@
 import NetInfo from "@react-native-community/netinfo";
-import * as Haptics from "expo-haptics";
+import * as ExpoHaptics from "expo-haptics";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import { create } from "zustand";
@@ -201,6 +201,18 @@ interface LocalStoreState {
 }
 
 export const useLocalStore = create<LocalStoreState>((set, get) => {
+  // Haptics wrapper that honours the user's "Haptic Feedback" setting
+  const Haptics = {
+    ImpactFeedbackStyle: ExpoHaptics.ImpactFeedbackStyle,
+    NotificationFeedbackType: ExpoHaptics.NotificationFeedbackType,
+    impactAsync: (style: ExpoHaptics.ImpactFeedbackStyle) => {
+      if (get().hapticsEnabled) ExpoHaptics.impactAsync(style).catch(() => {});
+    },
+    notificationAsync: (type: ExpoHaptics.NotificationFeedbackType) => {
+      if (get().hapticsEnabled) ExpoHaptics.notificationAsync(type).catch(() => {});
+    },
+  };
+
   // Key helpers for local store persistence
   const saveKey = async (key: string, value: string) => {
     if (Platform.OS === "web") {
@@ -248,6 +260,18 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
       }
     }
     return Array.from(seen.values());
+  };
+
+  // `accounts.name` is UNIQUE, but deleted accounts are only soft-deleted until the next
+  // cloud sync (and forever when signed out). Purge such a row before reusing its name.
+  const purgeDeletedAccountName = async (
+    db: Awaited<ReturnType<typeof getDatabase>>,
+    name: string,
+  ) => {
+    await db.runAsync(
+      "DELETE FROM accounts WHERE sync_status = 'deleted' AND name = ?",
+      [name],
+    );
   };
 
   // Setup reactive network connectivity listeners on file load
@@ -493,6 +517,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
             const type = name.toLowerCase() === "card" ? "Card" : (name.toLowerCase() === "savings" ? "Savings" : "Cash");
             const color = colors[colorIdx % colors.length];
             colorIdx++;
+            await purgeDeletedAccountName(db, name);
             await db.runAsync(
               `INSERT INTO accounts (id, name, type, initial_balance, color, sync_status, updated_at)
                VALUES (?, ?, ?, 0.0, ?, 'pending', ?)`,
@@ -556,7 +581,8 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
       }
 
       set({ isSyncing: true });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      // Only buzz for user-initiated syncs; background auto-syncs stay silent
+      if (force) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
 
       try {
         const db = await getDatabase();
@@ -982,7 +1008,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
 
           // Reload Zustand cache to update in-memory state
           await get().loadAllData();
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          if (force) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
       } catch (error) {
         console.error("Cloud synchronization failed:", error);
@@ -1003,6 +1029,7 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
 
       try {
         const db = await getDatabase();
+        await purgeDeletedAccountName(db, newAcc.name);
         await db.runAsync(
           `INSERT INTO accounts (id, name, type, initial_balance, color, icon, sync_status, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`,
@@ -1036,8 +1063,12 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
         updated_at: Date.now(),
       };
 
+      const oldName = get().accounts.find((a) => a.id === acc.id)?.name;
+      const isRenamed = !!oldName && oldName !== updatedAcc.name;
+
       try {
         const db = await getDatabase();
+        if (isRenamed) await purgeDeletedAccountName(db, updatedAcc.name);
         await db.runAsync(
           `UPDATE accounts
            SET name = ?, type = ?, initial_balance = ?, color = ?, icon = ?, sync_status = 'pending', updated_at = ?
@@ -1052,6 +1083,36 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
             updatedAcc.id,
           ],
         );
+
+        // Transactions and recurring templates reference accounts by name,
+        // so carry the rename over to them or they'd drop out of the balance.
+        if (isRenamed) {
+          const now = Date.now();
+          const matches = (name: string) =>
+            name.toLowerCase() === oldName.toLowerCase();
+          await db.runAsync(
+            `UPDATE transactions SET account = ?, sync_status = 'pending', updated_at = ?
+             WHERE LOWER(account) = LOWER(?) AND sync_status != 'deleted'`,
+            [updatedAcc.name, now, oldName],
+          );
+          await db.runAsync(
+            `UPDATE recurring_templates SET account = ?, sync_status = 'pending', updated_at = ?
+             WHERE LOWER(account) = LOWER(?) AND sync_status != 'deleted'`,
+            [updatedAcc.name, now, oldName],
+          );
+          set((state) => ({
+            transactions: state.transactions.map((t) =>
+              matches(t.account)
+                ? { ...t, account: updatedAcc.name, sync_status: "pending", updated_at: now }
+                : t,
+            ),
+            recurringTemplates: state.recurringTemplates.map((t) =>
+              matches(t.account)
+                ? { ...t, account: updatedAcc.name, sync_status: "pending", updated_at: now }
+                : t,
+            ),
+          }));
+        }
 
         set({
           accounts: get().accounts.map((a) => (a.id === acc.id ? updatedAcc : a)),
@@ -1944,10 +2005,11 @@ export const useLocalStore = create<LocalStoreState>((set, get) => {
       );
 
       const now = new Date();
-      const currentMonthStr = now.toISOString().substring(0, 7); // 'YYYY-MM'
       const currentDay = now.getDate();
       const currentYear = now.getFullYear();
       const currentMonth = now.getMonth();
+      // Local 'YYYY-MM' (toISOString() is UTC and gives the previous month early on the 1st)
+      const currentMonthStr = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}`;
       const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
 
       let hasAppliedAny = false;

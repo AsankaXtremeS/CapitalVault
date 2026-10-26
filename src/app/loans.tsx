@@ -6,7 +6,7 @@ import {
   calculateEMI,
   generateAmortizationSchedule,
 } from "@/utils/amortizationEngine";
-import * as Haptics from "expo-haptics";
+import * as Haptics from "@/utils/haptics";
 import {
   Bell,
   ChevronDown,
@@ -14,7 +14,7 @@ import {
   Percent,
   Plus,
   Trash2,
-} from "lucide-react-native";
+} from "@/components/icons";
 import { useState } from "react";
 import {
   Alert,
@@ -164,7 +164,7 @@ export default function LoansLedger() {
               No Active Loans, Deposits, or Investment plans logged.
             </Text>
             <Text style={styles.emptySubText}>
-              Tap the "+" to log loans, fixed deposits, or interest-bearing
+              Tap the &quot;+&quot; to log loans, fixed deposits, or interest-bearing
               installments.
             </Text>
           </View>

@@ -1,7 +1,8 @@
 import * as SQLite from "expo-sqlite";
 import { Platform } from "react-native";
 
-let databaseInstance: SQLite.SQLiteDatabase | null = null;
+// Cache the open promise so concurrent first callers share one connection
+let databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
 /**
  * Retrieves or opens the SQLite database instance asynchronously.
@@ -17,12 +18,13 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
     } as any;
   }
 
-  if (!databaseInstance) {
-    databaseInstance = await SQLite.openDatabaseAsync(
-      "offline_money_manager.db",
-    );
+  if (!databasePromise) {
+    databasePromise = SQLite.openDatabaseAsync("offline_money_manager.db");
+    databasePromise.catch(() => {
+      databasePromise = null; // allow a retry after a failed open
+    });
   }
-  return databaseInstance;
+  return databasePromise;
 }
 
 /**
@@ -90,13 +92,13 @@ export async function initializeDatabase(): Promise<void> {
     await db.execAsync(
       `ALTER TABLE loans_installments ADD COLUMN entry_type TEXT CHECK(entry_type IN ('income', 'expense')) NOT NULL DEFAULT 'expense';`,
     );
-  } catch (e) {
+  } catch {
     // Column already exists or migration not needed.
   }
 
   try {
     await db.execAsync(`ALTER TABLE debts_lending ADD COLUMN note TEXT;`);
-  } catch (e) {
+  } catch {
     // Column already exists or migration not needed.
   }
 
